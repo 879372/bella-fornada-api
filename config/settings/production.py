@@ -13,6 +13,13 @@ ALLOWED_HOSTS = [
     if host.strip()
 ]
 
+# Railway injeta estes domínios em runtime. Incluí-los automaticamente evita
+# que uma alteração do domínio público derrube toda a API com DisallowedHost.
+for railway_host_variable in ('RAILWAY_PUBLIC_DOMAIN', 'RAILWAY_PRIVATE_DOMAIN'):
+    railway_host = env_config(railway_host_variable, default='').strip()
+    if railway_host and railway_host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(railway_host)
+
 def parse_origins(raw_str):
     if not raw_str:
         return []
@@ -33,6 +40,10 @@ else:
         'http://localhost:5173',
     ]
 
+frontend_public_url = env_config('FRONTEND_PUBLIC_URL', default='').strip().rstrip('/')
+if frontend_public_url and frontend_public_url not in CORS_ALLOWED_ORIGINS:
+    CORS_ALLOWED_ORIGINS.append(frontend_public_url)
+
 # Static Files (WhiteNoise)
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / "staticfiles"
@@ -47,6 +58,8 @@ else:
     CSRF_TRUSTED_ORIGINS = [
         'http://localhost:5173',
     ]
+if frontend_public_url and frontend_public_url not in CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS.append(frontend_public_url)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Security headers

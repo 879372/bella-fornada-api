@@ -147,10 +147,21 @@ CORS_ALLOWED_ORIGINS = _parse_origins(config(
 CORS_ALLOW_CREDENTIALS = True
 
 # Integração fiscal (ACBr)
-ACBR_API_URL = config('ACBR_API_URL', default='')
-ACBR_API_KEY = config('ACBR_API_KEY', default='')
+# Aceita os nomes novos e os nomes legados já usados no Railway. Isso permite
+# migrar a configuração sem copiar, imprimir ou rotacionar segredos.
+ACBR_API_URL = config(
+    'ACBR_API_URL',
+    default=config('FISCAL_API_URL', default=''),
+)
+ACBR_API_KEY = config(
+    'ACBR_API_KEY',
+    default=config('FISCAL_API_KEY', default=''),
+)
 ACBR_API_TIMEOUT = config('FISCAL_TIMEOUT_SECONDS', default=30, cast=int)
-FISCAL_CNPJ_EMITENTE = config('FISCAL_CNPJ_EMITENTE', default='')
+FISCAL_CNPJ_EMITENTE = config(
+    'FISCAL_CNPJ_EMITENTE',
+    default=config('EMPRESA_CNPJ', default=''),
+)
 FISCAL_AMBIENTE = config('FISCAL_AMBIENTE', default='homologacao')
 
 # Delivery: URL pública do frontend, usada nos links de acompanhamento de pedido
