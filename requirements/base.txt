@@ -1,0 +1,17 @@
+django>=4.2,<5.3
+djangorestframework
+djangorestframework-simplejwt
+django-cors-headers
+django-redis
+django-environ
+dj-database-url
+python-decouple
+django-storages
+boto3
+drf-spectacular
+structlog
+sentry-sdk
+gunicorn
+psycopg2-binary
+Pillow
+requests

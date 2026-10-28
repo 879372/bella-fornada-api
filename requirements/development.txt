@@ -1,0 +1,11 @@
+-r base.txt
+
+pytest
+pytest-django
+pytest-cov
+factory-boy
+faker
+ruff
+black
+isort
+django-debug-toolbar

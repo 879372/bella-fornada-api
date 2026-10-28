@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comprovante de Venda - PADARIA BELLA FORNADA</title>
+    <style>
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .cupom {
+            background-color: #fff;
+            width: 100%;
+            max-width: 400px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-radius: 4px;
+            color: #000;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .nome-empresa {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .divider {
+            border-bottom: 1px dashed #000;
+            margin: 15px 0;
+        }
+        .tabela-itens {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .tabela-itens th {
+            text-align: left;
+            border-bottom: 1px solid #000;
+            padding-bottom: 5px;
+        }
+        .tabela-itens td {
+            padding: 5px 0;
+        }
+        .text-right {
+            text-align: right;
+        }
+        .text-center {
+            text-align: center;
+        }
+        .bold {
+            font-weight: bold;
+        }
+        .total-container {
+            margin-top: 15px;
+            font-size: 18px;
+        }
+        .btn-imprimir {
+            display: block;
+            width: 90%;
+            margin: 20px auto;
+            padding: 12px;
+            background-color: #3b82f6;
+            color: #fff;
+            text-align: center;
+            text-decoration: none;
+            border-radius: 6px;
+            font-family: sans-serif;
+            font-weight: bold;
+            box-sizing: border-box;
+        }
+        @media print {
+            .btn-imprimir { display: none; }
+            body { background-color: #fff; padding: 0; }
+            .cupom { box-shadow: none; max-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="cupom">
+        <div class="header">
+            <div class="nome-empresa">PADARIA BELLA FORNADA</div>
+            <div>Comprovante de Venda</div>
+            <div>Data: {{ venda.data|date:"d/m/Y H:i" }}</div>
+            <div class="bold">Venda #{{ venda.id }}</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <table class="tabela-itens">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th class="text-right">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in venda.itens.all %}
+                <tr>
+                    <td>{{ item.quantidade|floatformat:3 }} {{ item.produto.unidade_medida }} x {{ item.produto.nome }}</td>
+                    <td class="text-right">R$ {{ item.subtotal|floatformat:2 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="divider"></div>
+
+        <div class="total-container">
+            <div style="display: flex; justify-content: space-between;">
+                <span>Subtotal:</span>
+                <span>R$ {{ venda.total|floatformat:2 }}</span>
+            </div>
+            {% if venda.desconto > 0 %}
+            <div style="display: flex; justify-content: space-between; color: #d32f2f;">
+                <span>Desconto:</span>
+                <span>- R$ {{ venda.desconto|floatformat:2 }}</span>
+            </div>
+            {% endif %}
+            <div style="display: flex; justify-content: space-between; font-weight: 900; margin-top: 5px;">
+                <span>TOTAL:</span>
+                <span>R$ {{ venda.total_liquido|floatformat:2 }}</span>
+            </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="bold">Pagamentos:</div>
+        {% for pagto in venda.pagamentos.all %}
+        <div style="display: flex; justify-content: space-between;">
+            <span>{{ pagto.get_forma_display }}</span>
+            <span>R$ {{ pagto.valor|floatformat:2 }}</span>
+        </div>
+        {% endfor %}
+
+        <a href="javascript:window.print()" class="btn-imprimir">Imprimir</a>
+        <div class="text-center" style="margin-top: 15px; font-size: 12px;">Obrigado pela preferência!</div>
+    </div>
+</body>
+</html>
