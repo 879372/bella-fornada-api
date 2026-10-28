@@ -17,6 +17,7 @@ def test_production_settings_include_railway_and_frontend(monkeypatch):
     assert "api.railway.internal" in settings.ALLOWED_HOSTS
     assert "https://bella.example.com" in settings.CORS_ALLOWED_ORIGINS
     assert "https://bella.example.com" in settings.CSRF_TRUSTED_ORIGINS
+    assert r"^api/health/$" in settings.SECURE_REDIRECT_EXEMPT
 
 
 def test_fiscal_settings_accept_legacy_railway_names(monkeypatch):

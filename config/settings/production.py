@@ -61,6 +61,7 @@ else:
 if frontend_public_url and frontend_public_url not in CSRF_TRUSTED_ORIGINS:
     CSRF_TRUSTED_ORIGINS.append(frontend_public_url)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_REDIRECT_EXEMPT = [r'^api/health/$']
 
 # Security headers
 SECURE_BROWSER_XSS_FILTER = True
