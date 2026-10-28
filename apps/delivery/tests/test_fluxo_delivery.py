@@ -94,3 +94,9 @@ def test_configuracao_do_delivery_salva_pelos_nomes_da_api(auth_client, loja_abe
     loja_aberta.refresh_from_db()
     assert loja_aberta.aceita_pedidos is False
     assert loja_aberta.pix_chave == 'pix@bellafornada.com'
+
+
+def test_menu_publico_por_slug_funciona_em_instalacao_nova(db):
+    assert not ConfiguracaoDelivery.objects.exists()
+    resposta = APIClient().get('/api/public/bella-fornada/menu/')
+    assert resposta.status_code == 200

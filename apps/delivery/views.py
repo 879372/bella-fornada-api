@@ -37,6 +37,8 @@ from .services import alterar_status, confirmar_pagamento
 
 def _configuracao_por_slug(slug=None):
     if slug:
+        # Garante a configuração padrão numa instalação nova antes de buscar pelo slug.
+        ConfiguracaoDelivery.atual()
         return get_object_or_404(ConfiguracaoDelivery, slug=slug)
     return ConfiguracaoDelivery.atual()
 
