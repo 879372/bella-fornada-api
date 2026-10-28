@@ -167,7 +167,7 @@ class SessaoCaixaSerializer(serializers.ModelSerializer):
 
     def get_saldo_final_calculado(self, obj):
         from django.db.models import Sum
-        from .models import Venda, OperacaoCaixa
+        from .models import OperacaoCaixa
         total_dinheiro = VendaPagamento.objects.filter(
             venda__sessao=obj, venda__status='FINALIZADA', forma='DINHEIRO'
         ).aggregate(t=Sum('valor'))['t'] or 0

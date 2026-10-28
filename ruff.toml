@@ -1,0 +1,5 @@
+extend-exclude = [".venv", "venv"]
+
+[lint.per-file-ignores]
+# Padrão do Django: cada ambiente herda tudo de base.py.
+"config/settings/*.py" = ["F403", "F405"]

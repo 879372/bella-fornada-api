@@ -6,8 +6,9 @@ from .models import PerfilUsuario
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
-    papel = serializers.ChoiceField(choices=PerfilUsuario.Papel.choices)
-    telefone = serializers.CharField(required=False, allow_blank=True)
+    # Campos do PerfilUsuario: gravados em create/update e lidos em to_representation.
+    papel = serializers.ChoiceField(choices=PerfilUsuario.Papel.choices, write_only=True)
+    telefone = serializers.CharField(required=False, allow_blank=True, write_only=True)
     ativo = serializers.BooleanField(source='is_active', required=False)
     password = serializers.CharField(write_only=True, required=False, min_length=8)
     papel_label = serializers.CharField(

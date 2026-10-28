@@ -72,7 +72,7 @@ def run_backup():
         )
 
         s3.upload_file(FILE_PATH, S3_BUCKET, f"backups/{FILE_NAME}")
-        print(f"✅ Backup concluído com sucesso!")
+        print("✅ Backup concluído com sucesso!")
 
         os.remove(FILE_PATH)
 

@@ -2,6 +2,7 @@
 Django settings for erp_core project.
 """
 
+import sys
 from pathlib import Path
 from decouple import config
 import dj_database_url
@@ -9,7 +10,6 @@ from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-import sys
 sys.path.insert(0, str(BASE_DIR / 'apps'))
 
 # SECURITY
@@ -36,6 +36,10 @@ INSTALLED_APPS = [
     'apps.vendas',
     'apps.financeiro',
     'apps.compras',
+    'apps.usuarios',
+    'apps.producao',
+    'apps.delivery',
+    'apps.fiscal',
     'drf_spectacular',
 ]
 
@@ -141,4 +145,14 @@ CORS_ALLOWED_ORIGINS = _parse_origins(config(
     default='http://localhost:5173,http://localhost:3000'
 ))
 CORS_ALLOW_CREDENTIALS = True
+
+# Integração fiscal (ACBr)
+ACBR_API_URL = config('ACBR_API_URL', default='')
+ACBR_API_KEY = config('ACBR_API_KEY', default='')
+ACBR_API_TIMEOUT = config('FISCAL_TIMEOUT_SECONDS', default=30, cast=int)
+FISCAL_CNPJ_EMITENTE = config('FISCAL_CNPJ_EMITENTE', default='')
+FISCAL_AMBIENTE = config('FISCAL_AMBIENTE', default='homologacao')
+
+# Delivery: URL pública do frontend, usada nos links de acompanhamento de pedido
+FRONTEND_PUBLIC_URL = config('FRONTEND_PUBLIC_URL', default='http://localhost:5173').rstrip('/')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

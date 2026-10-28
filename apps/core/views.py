@@ -2,7 +2,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from django.db import connection
-from django.db.models import Sum, Avg, Count, Q
+from django.db.models import Sum, Avg
 from django.utils import timezone
 from calendar import monthrange
 from datetime import date, timedelta
@@ -36,7 +36,7 @@ def dashboard_stats(request):
     Retorna estatísticas consolidadas para o dashboard.
     """
     from apps.vendas.models import Venda
-    from apps.produtos.models import EstoqueLoja, Produto
+    from apps.produtos.models import EstoqueLoja
 
     today = timezone.now().date()
 
@@ -71,7 +71,6 @@ def dashboard_stats(request):
     ).aggregate(total=Sum('valor_total'))['total'] or 0
 
     # 3. Lucro por Categoria — considera desconto proporcional da venda
-    from apps.vendas.models import VendaItem
     from collections import defaultdict
 
     vendas_periodo_qs = Venda.objects.filter(

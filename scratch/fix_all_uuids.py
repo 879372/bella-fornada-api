@@ -7,7 +7,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.development')
 sys.path.append(os.getcwd())
 django.setup()
 
-from django.apps import apps
+from django.apps import apps  # noqa: E402 - precisa do django.setup()
 
 def populate_all_uuids():
     models_to_fix = []

@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from apps.clientes.models import Cliente
-from apps.produtos.models import Produto, EstoqueLoja
+from apps.produtos.models import Produto
 from apps.core.models import BaseModel, ActiveManager
 
 

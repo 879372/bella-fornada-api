@@ -4,7 +4,7 @@ import pytest
 
 from apps.compras.models import NotaCompra
 from apps.financeiro.models import ContaPagar
-from apps.produtos.models import EstoqueLoja, MovimentacaoEstoque
+from apps.produtos.models import MovimentacaoEstoque
 from apps.produtos.tests.factories import EstoqueLojaFactory
 
 
@@ -47,6 +47,6 @@ def test_registrar_compra_confirma_entrada_sem_gerar_conta_pagar(auth_client):
 
 
 @pytest.mark.django_db
-def test_rotas_fiscais_nao_existem(auth_client):
-    assert auth_client.get('/api/fiscal/').status_code == 404
+def test_fiscal_fica_no_proprio_modulo(auth_client):
+    assert auth_client.get('/api/fiscal/documentos/').status_code == 200
     assert auth_client.post('/api/vendas/1/emitir-nfce/', {}, format='json').status_code == 404

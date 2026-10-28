@@ -1,3 +1,5 @@
+from dateutil.relativedelta import relativedelta
+from django.db import transaction
 from rest_framework import viewsets, filters
 from .models import ContaPagar, ContaReceber, CategoriaFinanceira
 from .serializers import (
@@ -13,10 +15,6 @@ class CategoriaFinanceiraViewSet(viewsets.ModelViewSet):
     queryset = CategoriaFinanceira.objects.all()
     serializer_class = CategoriaFinanceiraSerializer
 
-
-from django.db import transaction
-from datetime import date
-from dateutil.relativedelta import relativedelta
 
 class ContaPagarViewSet(viewsets.ModelViewSet):
     queryset = ContaPagar.objects.all().select_related('categoria')

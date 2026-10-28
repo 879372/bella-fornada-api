@@ -8,9 +8,9 @@ load_dotenv()
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.production')
 django.setup()
 
-from apps.vendas.models import Venda, SessaoCaixa, OperacaoCaixa
-from apps.financeiro.models import ContaPagar, ContaReceber
-from apps.compras.models import NotaCompra
+from apps.vendas.models import Venda, SessaoCaixa, OperacaoCaixa  # noqa: E402 - precisa do django.setup()
+from apps.financeiro.models import ContaPagar, ContaReceber  # noqa: E402 - precisa do django.setup()
+from apps.compras.models import NotaCompra  # noqa: E402 - precisa do django.setup()
 
 print("---------------------------------")
 print("INICIANDO LIMPEZA DE TRANSACOES...")

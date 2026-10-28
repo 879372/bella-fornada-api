@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.utils import timezone
 from apps.vendas.tests.factories import VendaFactory, VendaItemFactory, SessaoCaixaFactory
 from apps.produtos.tests.factories import EstoqueLojaFactory, ProdutoFactory
-from apps.vendas.models import Venda, VendaPagamento
+from apps.vendas.models import VendaPagamento
 from apps.financeiro.models import ContaReceber
 
 @pytest.mark.django_db
@@ -16,7 +16,7 @@ def test_finalizar_venda_sucesso(auth_client, admin_user):
     venda = VendaFactory(sessao=sessao, total=Decimal("50.00"), status="EM_ABERTO")
 
     estoque = EstoqueLojaFactory(quantidade=Decimal("10.00"), loja="Loja Principal")
-    item = VendaItemFactory(
+    VendaItemFactory(
         venda=venda,
         produto=estoque.produto,
         quantidade=Decimal("2.00"),

@@ -3,8 +3,8 @@ from datetime import time
 from decimal import Decimal, ROUND_HALF_UP
 from urllib.parse import quote
 
+from django.conf import settings
 from django.db import transaction
-from django.urls import reverse
 from rest_framework import serializers
 
 from apps.produtos.models import Produto
@@ -337,11 +337,8 @@ class PedidoDeliverySerializer(serializers.ModelSerializer):
         return self._configuracao_cache
 
     def get_tracking_url(self, obj):
-        caminho = reverse(
-            "delivery-public-tracking", kwargs={"token": obj.rastreamento_token}
-        )
-        request = self.context.get("request")
-        return request.build_absolute_uri(caminho) if request else caminho
+        # Link da tela de acompanhamento no frontend, não do endpoint JSON.
+        return f"{settings.FRONTEND_PUBLIC_URL}/acompanhar/{obj.rastreamento_token}"
 
     def get_pix_chave(self, obj):
         return self._configuracao().pix_chave

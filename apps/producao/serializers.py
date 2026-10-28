@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import transaction
 from rest_framework import serializers
 
@@ -94,7 +96,7 @@ class ConcluirOrdemSerializer(serializers.Serializer):
     quantidade_produzida = serializers.DecimalField(
         max_digits=12,
         decimal_places=3,
-        min_value=0.001,
+        min_value=Decimal("0.001"),
         required=False,
     )
 
