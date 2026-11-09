@@ -2,6 +2,7 @@ from django.db.models import Q
 from rest_framework import viewsets, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from .barcodes import interpretar_etiqueta_balanca
 from .models import Produto, Grupo
 from .serializers import (
     ProdutoSerializer,
@@ -69,11 +70,24 @@ class ProdutoViewSet(viewsets.ModelViewSet):
 
         ativos = Produto.objects.filter(ativo=True)
         produtos = list(ativos.filter(codigo_barras=codigo)[:5])
+        etiqueta = None
+        if not produtos:
+            etiqueta = interpretar_etiqueta_balanca(codigo)
+            if etiqueta:
+                produtos = list(
+                    ativos.filter(
+                        codigo_legado=etiqueta.codigo_produto,
+                        unidade_medida__iexact='KG',
+                    )[:1]
+                )
         if not produtos and codigo.isdigit():
             produtos = list(ativos.filter(codigo_legado=int(codigo))[:5])
 
         serializer = ProdutoSimplificadoSerializer(produtos, many=True)
-        return Response(serializer.data)
+        data = list(serializer.data)
+        if etiqueta and len(data) == 1:
+            data[0]['quantidade_balanca'] = format(etiqueta.quantidade_kg, 'f')
+        return Response(data)
 
     @action(detail=True, methods=['get'])
     def movimentacoes(self, request, pk=None):

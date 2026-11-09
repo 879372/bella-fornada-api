@@ -32,3 +32,30 @@ def test_por_codigo_ignora_inativos(auth_client):
 
     response = auth_client.get('/api/produtos/por-codigo/', {'codigo': '7891111111111'})
     assert response.data == []
+
+
+@pytest.mark.django_db
+def test_por_codigo_interpreta_etiqueta_de_balanca(auth_client):
+    produto = ProdutoFactory(
+        codigo_legado=149,
+        codigo_barras='7770000001491',
+        unidade_medida='KG',
+        ativo=True,
+    )
+
+    response = auth_client.get('/api/produtos/por-codigo/', {'codigo': '2001490000844'})
+
+    assert response.status_code == 200
+    assert len(response.data) == 1
+    assert str(response.data[0]['id']) == str(produto.id)
+    assert response.data[0]['nome'] == produto.nome
+    assert response.data[0]['quantidade_balanca'] == '0.084'
+
+
+@pytest.mark.django_db
+def test_por_codigo_rejeita_etiqueta_com_digito_verificador_invalido(auth_client):
+    ProdutoFactory(codigo_legado=149, unidade_medida='KG', ativo=True)
+
+    response = auth_client.get('/api/produtos/por-codigo/', {'codigo': '2001490000845'})
+
+    assert response.data == []
