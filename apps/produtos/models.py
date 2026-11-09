@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.validators import MaxValueValidator, MinValueValidator
 from apps.core.models import BaseModel, ActiveManager
 
 class Grupo(BaseModel):
@@ -14,6 +15,35 @@ class Grupo(BaseModel):
         verbose_name = 'Grupo'
         verbose_name_plural = 'Grupos'
         ordering = ['nome']
+
+    def __str__(self):
+        return self.nome
+
+
+class ConfiguracaoBalanca(models.Model):
+    nome = models.CharField(max_length=100, default='Balança principal')
+    fabricante = models.CharField(max_length=50, default='Toledo')
+    modelo = models.CharField(max_length=100, blank=True)
+    versao_mgv = models.CharField(max_length=50, blank=True)
+    ip = models.GenericIPAddressField(protocol='IPv4', blank=True, null=True)
+    porta = models.PositiveIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(65535)],
+        help_text='Use zero quando a comunicação for gerenciada pelo MGV.',
+    )
+    departamento = models.PositiveSmallIntegerField(default=1)
+    validade_padrao_dias = models.PositiveSmallIntegerField(default=1)
+    prefixo_ean = models.CharField(max_length=1, default='2')
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Configuração da balança'
+        verbose_name_plural = 'Configurações da balança'
+
+    @classmethod
+    def atual(cls):
+        configuracao = cls.objects.order_by('id').first()
+        return configuracao or cls.objects.create()
 
     def __str__(self):
         return self.nome

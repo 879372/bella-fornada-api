@@ -1,15 +1,61 @@
+import csv
+
 from django.db.models import Q
-from rest_framework import viewsets, filters
+from django.http import HttpResponse
+from rest_framework import filters, viewsets
 from rest_framework.decorators import action
+from rest_framework.views import APIView
 from rest_framework.response import Response
 from .barcodes import interpretar_etiqueta_balanca
-from .models import Produto, Grupo
+from .models import ConfiguracaoBalanca, Produto, Grupo
 from .serializers import (
-    ProdutoSerializer,
+    ConfiguracaoBalancaSerializer,
+    GrupoSerializer,
     ProdutoReadSerializer,
+    ProdutoSerializer,
     ProdutoSimplificadoSerializer,
-    GrupoSerializer
 )
+
+
+class ConfiguracaoBalancaView(APIView):
+    def get(self, request):
+        return Response(ConfiguracaoBalancaSerializer(ConfiguracaoBalanca.atual()).data)
+
+    def patch(self, request):
+        configuracao = ConfiguracaoBalanca.atual()
+        serializer = ConfiguracaoBalancaSerializer(
+            configuracao, data=request.data, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class ExportarCargaBalancaView(APIView):
+    def get(self, request):
+        configuracao = ConfiguracaoBalanca.atual()
+        produtos = Produto.objects.filter(
+            ativo=True, unidade_medida__iexact='KG'
+        ).order_by('codigo_legado')
+
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = 'attachment; filename="carga_balanca.csv"'
+        response.write('\ufeff')
+        writer = csv.writer(response, delimiter=';', lineterminator='\r\n')
+        writer.writerow([
+            'PLU', 'DESCRICAO', 'PRECO_KG', 'VALIDADE_DIAS',
+            'DEPARTAMENTO', 'TIPO',
+        ])
+        for produto in produtos:
+            writer.writerow([
+                produto.codigo_legado,
+                produto.nome[:40],
+                f'{produto.preco_venda:.2f}'.replace('.', ','),
+                configuracao.validade_padrao_dias,
+                configuracao.departamento,
+                'PESO',
+            ])
+        return response
 
 
 class GrupoViewSet(viewsets.ModelViewSet):

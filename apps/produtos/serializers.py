@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Produto, EstoqueLoja, MovimentacaoEstoque, Grupo
+from .models import ConfiguracaoBalanca, Produto, EstoqueLoja, MovimentacaoEstoque, Grupo
 
 
 class GrupoSerializer(serializers.ModelSerializer):
@@ -7,6 +7,21 @@ class GrupoSerializer(serializers.ModelSerializer):
         model = Grupo
         fields = ['id', 'nome', 'descricao', 'ativo']
         read_only_fields = ['id']
+
+
+class ConfiguracaoBalancaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConfiguracaoBalanca
+        fields = [
+            'id', 'nome', 'fabricante', 'modelo', 'versao_mgv', 'ip', 'porta',
+            'departamento', 'validade_padrao_dias', 'prefixo_ean', 'updated_at',
+        ]
+        read_only_fields = ['id', 'updated_at']
+
+    def validate_prefixo_ean(self, value):
+        if len(value) != 1 or not value.isdigit():
+            raise serializers.ValidationError('Informe um prefixo numérico de um dígito.')
+        return value
 
 
 class MovimentacaoEstoqueSerializer(serializers.ModelSerializer):
