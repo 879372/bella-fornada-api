@@ -106,18 +106,32 @@ class VendaFiscalPayloadBuilder:
             cst_icms = str(
                 _required_product_value(product, "cst_icms", "CST/CSOSN do ICMS")
             ).strip()
+            cest = only_digits(getattr(product, "cest", ""))
+            origem = only_digits(getattr(product, "origem_mercadoria", ""))
 
-            if len(ncm) != 8:
+            if len(ncm) != 8 or ncm == "00000000":
                 raise FiscalValidationError(
-                    f"O NCM do produto '{product.nome}' deve ter 8 dígitos."
+                    f"O produto '{product.nome}' deve possuir um NCM válido com 8 dígitos."
                 )
             if len(cfop) != 4:
                 raise FiscalValidationError(
                     f"O CFOP do produto '{product.nome}' deve ter 4 dígitos."
                 )
-            if self.tipo == "NFCE" and cfop not in {"5102", "5405"}:
+            if self.tipo == "NFCE" and cfop not in {"5101", "5102", "5405"}:
                 raise FiscalValidationError(
                     f"O CFOP do produto '{product.nome}' não é aceito para NFC-e."
+                )
+            if len(cst_icms) not in {2, 3} or not cst_icms.isdigit():
+                raise FiscalValidationError(
+                    f"O CST/CSOSN do produto '{product.nome}' deve possuir 2 ou 3 dígitos."
+                )
+            if cest and len(cest) != 7:
+                raise FiscalValidationError(
+                    f"O CEST do produto '{product.nome}' deve possuir 7 dígitos."
+                )
+            if len(origem) != 1:
+                raise FiscalValidationError(
+                    f"A origem da mercadoria do produto '{product.nome}' é inválida."
                 )
 
             gross_line = Decimal(item.subtotal).quantize(CENT)
@@ -133,23 +147,40 @@ class VendaFiscalPayloadBuilder:
             fiscal_unit = (fiscal_line / quantity).quantize(
                 FOUR_DECIMALS, rounding=ROUND_HALF_UP
             )
-            result.append(
-                {
-                    "codigo": str(product.codigo_legado or product.pk),
-                    "descricao": str(product.nome)[:200],
-                    "ncm": ncm,
-                    "cfop": cfop,
-                    "unidade": str(product.unidade_medida or "UN")[:6],
-                    "quantidade": quantity.quantize(FOUR_DECIMALS),
-                    "valor_unitario": fiscal_unit,
-                    "valor_total": fiscal_line,
-                    "desconto": max(gross_line - fiscal_line, Decimal("0")).quantize(CENT),
-                    "cst_icms": cst_icms,
-                    "aliq_icms": Decimal(getattr(product, "aliquota_icms", 0) or 0),
-                    "aliq_pis": Decimal(getattr(product, "aliquota_pis", 0) or 0),
-                    "aliq_cofins": Decimal(getattr(product, "aliquota_cofins", 0) or 0),
-                }
+            fiscal_item = {
+                "codigo": str(product.codigo_legado or product.pk),
+                "descricao": str(product.nome)[:200],
+                "ncm": ncm,
+                "cfop": cfop,
+                "unidade": str(product.unidade_medida or "UN")[:6],
+                "quantidade": quantity.quantize(FOUR_DECIMALS),
+                "valor_unitario": fiscal_unit,
+                "valor_total": fiscal_line,
+                "desconto": max(gross_line - fiscal_line, Decimal("0")).quantize(CENT),
+                "cst_icms": cst_icms,
+                "origem": origem,
+                "aliq_icms": Decimal(getattr(product, "aliquota_icms", 0) or 0),
+                "aliq_pis": Decimal(getattr(product, "aliquota_pis", 0) or 0),
+                "aliq_cofins": Decimal(getattr(product, "aliquota_cofins", 0) or 0),
+            }
+            optional_fields = {
+                "cest": cest,
+                "cst_pis": str(getattr(product, "cst_pis", "") or "").strip(),
+                "cst_cofins": str(getattr(product, "cst_cofins", "") or "").strip(),
+                "codigo_beneficio_fiscal": str(
+                    getattr(product, "codigo_beneficio_fiscal", "") or ""
+                ).strip(),
+                "unidade_tributavel": str(
+                    getattr(product, "unidade_tributavel", "") or ""
+                ).strip(),
+                "gtin_tributavel": only_digits(
+                    getattr(product, "gtin_tributavel", "")
+                ),
+            }
+            fiscal_item.update(
+                {key: value for key, value in optional_fields.items() if value}
             )
+            result.append(fiscal_item)
         return result
 
     def _build_nfe_recipient(self):

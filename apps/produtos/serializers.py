@@ -31,13 +31,30 @@ class ProdutoSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'codigo_legado', 'nome', 'codigo_barras',
             'preco_compra', 'preco_venda', 'unidade_medida',
-            'grupo', 'subgrupo', 'ativo',
+            'grupo', 'subgrupo', 'marca', 'ativo',
             'descricao_delivery', 'disponivel_delivery', 'imagem_url',
             'tempo_preparo_minutos',
-            'ncm', 'cest', 'cfop', 'cst_icms', 'origem_mercadoria',
+            'ncm', 'cest', 'cfop', 'cst_icms', 'cst_pis', 'cst_cofins',
+            'origem_mercadoria', 'codigo_beneficio_fiscal',
+            'unidade_tributavel', 'gtin_tributavel',
+            'fator_conversao_tributavel',
             'aliquota_icms', 'aliquota_pis', 'aliquota_cofins',
             'estoque_inicial'
         ]
+
+    def validate_ncm(self, value):
+        digits = ''.join(character for character in str(value or '') if character.isdigit())
+        if not digits:
+            return ''
+        if len(digits) != 8 or digits == '00000000':
+            raise serializers.ValidationError('Informe um NCM válido com 8 dígitos.')
+        return digits
+
+    def validate_cfop(self, value):
+        digits = ''.join(character for character in str(value or '') if character.isdigit())
+        if len(digits) != 4:
+            raise serializers.ValidationError('Informe um CFOP válido com 4 dígitos.')
+        return digits
 
     def create(self, validated_data):
         estoque_ini = validated_data.pop('estoque_inicial', 0)

@@ -31,6 +31,7 @@ class Produto(BaseModel):
     unidade_medida = models.CharField(max_length=10, default='UN')
     grupo = models.CharField(max_length=100, blank=True, null=True)
     subgrupo = models.CharField(max_length=100, blank=True, null=True)
+    marca = models.CharField(max_length=100, blank=True)
     ativo = models.BooleanField(default=True)
 
     # Cardápio online / delivery
@@ -45,7 +46,15 @@ class Produto(BaseModel):
     cest = models.CharField(max_length=7, blank=True)
     cfop = models.CharField(max_length=4, default='5102')
     cst_icms = models.CharField(max_length=3, default='102')
+    cst_pis = models.CharField(max_length=2, blank=True)
+    cst_cofins = models.CharField(max_length=2, blank=True)
     origem_mercadoria = models.CharField(max_length=1, default='0')
+    codigo_beneficio_fiscal = models.CharField(max_length=10, blank=True)
+    unidade_tributavel = models.CharField(max_length=6, blank=True)
+    gtin_tributavel = models.CharField(max_length=14, blank=True)
+    fator_conversao_tributavel = models.DecimalField(
+        max_digits=15, decimal_places=6, default=1
+    )
     aliquota_icms = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     aliquota_pis = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     aliquota_cofins = models.DecimalField(max_digits=5, decimal_places=2, default=0)
