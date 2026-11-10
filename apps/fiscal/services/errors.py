@@ -28,8 +28,8 @@ class FiscalConflictError(FiscalError):
     http_status = 409
 
 
-class ACBRAPIError(FiscalError):
-    code = "acbr_api_error"
+class GeranetAPIError(FiscalError):
+    code = "geranet_api_error"
     http_status = 502
 
     def __init__(

@@ -12,10 +12,13 @@ class Cliente(BaseModel):
 
     # Endereço
     endereco = models.CharField(max_length=255, blank=True, null=True)
+    numero = models.CharField(max_length=20, blank=True, null=True)
+    complemento = models.CharField(max_length=100, blank=True, null=True)
     bairro = models.CharField(max_length=100, blank=True, null=True)
     cidade = models.CharField(max_length=100, blank=True, null=True)
     uf = models.CharField(max_length=2, blank=True, null=True)
     cep = models.CharField(max_length=10, blank=True, null=True)
+    codigo_municipio = models.CharField(max_length=7, blank=True, null=True)
 
     # Contato
     telefone = models.CharField(max_length=30, blank=True, null=True)

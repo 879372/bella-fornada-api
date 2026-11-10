@@ -1,5 +1,5 @@
-from .client import ACBRAPIClient
+from .client import GeranetClient
 from .fiscal import FiscalService
 
-__all__ = ["ACBRAPIClient", "FiscalService"]
+__all__ = ["GeranetClient", "FiscalService"]
 

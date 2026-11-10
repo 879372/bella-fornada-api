@@ -134,7 +134,6 @@ class DocumentoFiscalSerializer(serializers.ModelSerializer):
             "status_display",
             "ambiente",
             "referencia",
-            "acbr_id",
             "chave_acesso",
             "numero",
             "serie",
@@ -160,14 +159,10 @@ class DocumentoFiscalSerializer(serializers.ModelSerializer):
         return TentativaFiscalSerializer(attempts[0]).data
 
     def get_pode_baixar_xml(self, obj):
-        return bool(
-            obj.acbr_id
-            and obj.status
-            in {DocumentoFiscal.Status.AUTORIZADA, DocumentoFiscal.Status.CANCELADA}
-        )
+        return bool(obj.xml_conteudo)
 
     def get_pode_baixar_pdf(self, obj):
-        return bool(obj.acbr_id and obj.status == DocumentoFiscal.Status.AUTORIZADA)
+        return bool(obj.pdf_conteudo)
 
 
 class EmitirDocumentoFiscalSerializer(serializers.Serializer):

@@ -61,6 +61,8 @@ class DocumentoFiscal(BaseModel):
     protocolo = models.CharField(max_length=50, blank=True)
     codigo_status = models.CharField(max_length=20, blank=True)
     mensagem_sefaz = models.CharField(max_length=500, blank=True)
+    xml_conteudo = models.BinaryField(null=True, blank=True)
+    pdf_conteudo = models.BinaryField(null=True, blank=True)
     valor_total = models.DecimalField(max_digits=15, decimal_places=2, default=0)
 
     solicitada_por = models.ForeignKey(

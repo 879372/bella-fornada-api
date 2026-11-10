@@ -20,7 +20,7 @@ def sanitize_text(value, *, max_length=500):
     return text[:max_length]
 
 
-def extract_safe_error(data, *, fallback="Falha na comunicação com a ACBRAPI."):
+def extract_safe_error(data, *, fallback="Falha na comunicação com a Geranet."):
     """Extrai somente uma mensagem curta; nunca serializa o payload completo."""
     if isinstance(data, dict):
         for key in ("detail", "mensagem", "message", "motivo_status", "erro"):

@@ -1,2 +1,2 @@
-"""Integração fiscal do PDV com a ACBRAPI interna."""
+"""Integração fiscal de NF-e e NFC-e com a Geranet."""
 

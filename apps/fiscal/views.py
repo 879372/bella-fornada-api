@@ -7,6 +7,9 @@ from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from cryptography.hazmat.primitives.serialization.pkcs12 import load_key_and_certificates
+from django.utils import timezone
+import base64
 
 from drf_spectacular.utils import extend_schema
 
@@ -23,6 +26,7 @@ from .serializers import (
 )
 from .services.errors import FiscalError
 from .services.fiscal import FiscalService
+from .crypto import decrypt_secret
 
 
 class IsGestaoFiscal(BasePermission):
@@ -47,6 +51,37 @@ class ConfiguracaoFiscalView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class ValidarConfiguracaoFiscalView(APIView):
+    permission_classes = [IsAuthenticated, IsGestaoFiscal]
+
+    def post(self, request):
+        config = ConfiguracaoFiscal.atual()
+        missing = [field for field in (
+            "api_key_encrypted", "certificado_encrypted", "cnpj", "inscricao_estadual",
+            "razao_social", "logradouro", "numero", "bairro", "municipio",
+            "codigo_municipio", "uf", "cep",
+        ) if not getattr(config, field)]
+        if missing:
+            return Response({"detail": "A configuração fiscal ainda possui campos obrigatórios pendentes."}, status=400)
+        try:
+            certificate_bytes = base64.b64decode(decrypt_secret(config.certificado_encrypted), validate=True)
+            password = decrypt_secret(config.certificado_senha_encrypted).encode() or None
+            _key, certificate, _chain = load_key_and_certificates(certificate_bytes, password)
+            if not certificate:
+                raise ValueError("Certificado não encontrado")
+            expiration = certificate.not_valid_after_utc
+            if expiration <= timezone.now():
+                return Response({"detail": "O certificado A1 está vencido.", "valido": False}, status=400)
+        except Exception:
+            return Response({"detail": "Não foi possível abrir o certificado A1 com a senha informada.", "valido": False}, status=400)
+        return Response({
+            "valido": True,
+            "ambiente": config.ambiente,
+            "certificado": certificate.subject.rfc4514_string(),
+            "valido_ate": expiration,
+        })
 
 
 def _fiscal_error_response(exc):

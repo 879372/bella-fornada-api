@@ -20,18 +20,13 @@ def test_production_settings_include_railway_and_frontend(monkeypatch):
     assert r"^api/health/$" in settings.SECURE_REDIRECT_EXEMPT
 
 
-def test_fiscal_settings_accept_legacy_railway_names(monkeypatch):
-    monkeypatch.delenv("ACBR_API_URL", raising=False)
-    monkeypatch.delenv("ACBR_API_KEY", raising=False)
-    monkeypatch.delenv("FISCAL_CNPJ_EMITENTE", raising=False)
-    monkeypatch.setenv("FISCAL_API_URL", "https://fiscal.example.com/api/fiscal")
-    monkeypatch.setenv("FISCAL_API_KEY", "secret-test-key")
-    monkeypatch.setenv("EMPRESA_CNPJ", "12345678000199")
+def test_fiscal_settings_use_geranet(monkeypatch):
+    monkeypatch.setenv("GERANET_API_URL", "https://nfe.geranet.net/api/v1")
+    monkeypatch.setenv("FISCAL_TIMEOUT_SECONDS", "45")
 
     from config.settings import base
 
     settings = importlib.reload(base)
 
-    assert settings.ACBR_API_URL == "https://fiscal.example.com/api/fiscal"
-    assert settings.ACBR_API_KEY == "secret-test-key"
-    assert settings.FISCAL_CNPJ_EMITENTE == "12345678000199"
+    assert settings.GERANET_API_URL == "https://nfe.geranet.net/api/v1"
+    assert settings.GERANET_TIMEOUT == 45

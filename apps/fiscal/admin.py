@@ -58,7 +58,6 @@ class DocumentoFiscalAdmin(admin.ModelAdmin):
     readonly_fields = (
         "id_externo",
         "referencia",
-        "acbr_id",
         "status",
         "ambiente",
         "chave_acesso",
