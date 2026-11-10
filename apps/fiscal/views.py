@@ -3,16 +3,19 @@ from django.http import HttpResponse
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.views import APIView
 from rest_framework.response import Response
 
 from drf_spectacular.utils import extend_schema
 
 from apps.vendas.models import Venda
 
-from .models import DocumentoFiscal
+from .models import ConfiguracaoFiscal, DocumentoFiscal
 from .serializers import (
     CancelarDocumentoFiscalSerializer,
+    ConfiguracaoFiscalSerializer,
     DocumentoFiscalSerializer,
     EmitirDocumentoFiscalSerializer,
     EventoFiscalSerializer,
@@ -20,6 +23,30 @@ from .serializers import (
 )
 from .services.errors import FiscalError
 from .services.fiscal import FiscalService
+
+
+class IsGestaoFiscal(BasePermission):
+    def has_permission(self, request, view):
+        if request.user.is_staff or request.user.is_superuser:
+            return True
+        perfil = getattr(request.user, "perfil_bella_fornada", None)
+        return bool(perfil and perfil.papel in {"ADMIN", "GERENTE"})
+
+
+class ConfiguracaoFiscalView(APIView):
+    permission_classes = [IsAuthenticated, IsGestaoFiscal]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request):
+        return Response(ConfiguracaoFiscalSerializer(ConfiguracaoFiscal.atual()).data)
+
+    def patch(self, request):
+        serializer = ConfiguracaoFiscalSerializer(
+            ConfiguracaoFiscal.atual(), data=request.data, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 
 def _fiscal_error_response(exc):

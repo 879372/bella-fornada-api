@@ -91,6 +91,53 @@ class DocumentoFiscal(BaseModel):
         return f"{self.get_tipo_display()} {self.referencia} ({self.get_status_display()})"
 
 
+class ConfiguracaoFiscal(BaseModel):
+    ambiente = models.CharField(
+        max_length=12,
+        choices=DocumentoFiscal.Ambiente.choices,
+        default=DocumentoFiscal.Ambiente.HOMOLOGACAO,
+    )
+    api_url = models.URLField(default="https://nfe.geranet.net/api/v1")
+    api_key_encrypted = models.TextField(blank=True)
+    certificado_encrypted = models.TextField(blank=True)
+    certificado_nome = models.CharField(max_length=255, blank=True)
+    certificado_senha_encrypted = models.TextField(blank=True)
+    cnpj = models.CharField(max_length=14, blank=True)
+    inscricao_estadual = models.CharField(max_length=30, blank=True)
+    razao_social = models.CharField(max_length=200, blank=True)
+    nome_fantasia = models.CharField(max_length=60, blank=True)
+    telefone = models.CharField(max_length=20, blank=True)
+    email = models.EmailField(blank=True)
+    logradouro = models.CharField(max_length=200, blank=True)
+    numero = models.CharField(max_length=20, blank=True)
+    complemento = models.CharField(max_length=100, blank=True)
+    bairro = models.CharField(max_length=100, blank=True)
+    municipio = models.CharField(max_length=100, blank=True)
+    codigo_municipio = models.CharField(max_length=7, blank=True)
+    uf = models.CharField(max_length=2, blank=True)
+    cep = models.CharField(max_length=8, blank=True)
+    codigo_regime_tributario = models.CharField(max_length=1, default="1")
+    tipo_atividade = models.CharField(max_length=1, default="3")
+    serie_nfce = models.CharField(max_length=3, default="1")
+    proximo_numero_nfce = models.PositiveIntegerField(default=1)
+    serie_nfe = models.CharField(max_length=3, default="1")
+    proximo_numero_nfe = models.PositiveIntegerField(default=1)
+    csc_encrypted = models.TextField(blank=True)
+    csc_id = models.CharField(max_length=10, blank=True)
+
+    class Meta:
+        verbose_name = "Configuração fiscal"
+        verbose_name_plural = "Configurações fiscais"
+
+    @classmethod
+    def atual(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return self.razao_social or "Configuração fiscal"
+
+
 class TentativaFiscal(models.Model):
     class Operacao(models.TextChoices):
         EMISSAO = "EMISSAO", "Emissão"

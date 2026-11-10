@@ -1,8 +1,11 @@
+import base64
+
 from rest_framework import serializers
 
 from apps.vendas.models import Venda
 
-from .models import DocumentoFiscal, EventoFiscal, TentativaFiscal
+from .crypto import encrypt_secret
+from .models import ConfiguracaoFiscal, DocumentoFiscal, EventoFiscal, TentativaFiscal
 from .services.fiscal import FiscalService
 
 
@@ -21,6 +24,69 @@ class TentativaFiscalSerializer(serializers.ModelSerializer):
             "finalizada_em",
         ]
         read_only_fields = fields
+
+
+class ConfiguracaoFiscalSerializer(serializers.ModelSerializer):
+    api_key = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    certificado = serializers.FileField(write_only=True, required=False)
+    certificado_senha = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    csc = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    api_key_configurada = serializers.SerializerMethodField()
+    certificado_configurado = serializers.SerializerMethodField()
+    certificado_senha_configurada = serializers.SerializerMethodField()
+    csc_configurado = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ConfiguracaoFiscal
+        fields = [
+            "ambiente", "api_url", "api_key", "api_key_configurada", "certificado",
+            "certificado_nome", "certificado_configurado", "certificado_senha",
+            "certificado_senha_configurada", "cnpj", "inscricao_estadual",
+            "razao_social", "nome_fantasia", "telefone", "email", "logradouro",
+            "numero", "complemento", "bairro", "municipio", "codigo_municipio",
+            "uf", "cep", "codigo_regime_tributario", "tipo_atividade", "serie_nfce",
+            "proximo_numero_nfce", "serie_nfe", "proximo_numero_nfe", "csc",
+            "csc_id", "csc_configurado", "updated_at",
+        ]
+        read_only_fields = ["certificado_nome", "updated_at"]
+
+    def get_api_key_configurada(self, obj): return bool(obj.api_key_encrypted)
+    def get_certificado_configurado(self, obj): return bool(obj.certificado_encrypted)
+    def get_certificado_senha_configurada(self, obj): return bool(obj.certificado_senha_encrypted)
+    def get_csc_configurado(self, obj): return bool(obj.csc_encrypted)
+
+    def validate_certificado(self, value):
+        if not value.name.lower().endswith((".pfx", ".p12")):
+            raise serializers.ValidationError("Envie um certificado A1 .pfx ou .p12.")
+        if value.size > 2 * 1024 * 1024:
+            raise serializers.ValidationError("O certificado deve ter no máximo 2 MB.")
+        return value
+
+    def validate(self, attrs):
+        for field, length, label in (("cnpj", 14, "CNPJ"), ("codigo_municipio", 7, "código IBGE"), ("cep", 8, "CEP")):
+            if field in attrs:
+                digits = "".join(c for c in str(attrs[field]) if c.isdigit())
+                if digits and len(digits) != length:
+                    raise serializers.ValidationError({field: f"{label} deve ter {length} dígitos."})
+                attrs[field] = digits
+        if "uf" in attrs:
+            attrs["uf"] = attrs["uf"].strip().upper()
+            if attrs["uf"] and len(attrs["uf"]) != 2:
+                raise serializers.ValidationError({"uf": "Informe uma UF com 2 letras."})
+        return attrs
+
+    def update(self, instance, validated_data):
+        api_key = validated_data.pop("api_key", None)
+        certificado = validated_data.pop("certificado", None)
+        senha = validated_data.pop("certificado_senha", None)
+        csc = validated_data.pop("csc", None)
+        if api_key: instance.api_key_encrypted = encrypt_secret(api_key)
+        if certificado:
+            instance.certificado_encrypted = encrypt_secret(base64.b64encode(certificado.read()).decode("ascii"))
+            instance.certificado_nome = certificado.name[:255]
+        if senha: instance.certificado_senha_encrypted = encrypt_secret(senha)
+        if csc: instance.csc_encrypted = encrypt_secret(csc)
+        return super().update(instance, validated_data)
 
 
 class EventoFiscalSerializer(serializers.ModelSerializer):

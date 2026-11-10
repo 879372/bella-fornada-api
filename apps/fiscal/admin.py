@@ -1,6 +1,12 @@
 from django.contrib import admin
 
-from .models import DocumentoFiscal, EventoFiscal, TentativaFiscal
+from .models import ConfiguracaoFiscal, DocumentoFiscal, EventoFiscal, TentativaFiscal
+
+
+@admin.register(ConfiguracaoFiscal)
+class ConfiguracaoFiscalAdmin(admin.ModelAdmin):
+    list_display = ("razao_social", "cnpj", "ambiente", "certificado_nome", "updated_at")
+    exclude = ("api_key_encrypted", "certificado_encrypted", "certificado_senha_encrypted", "csc_encrypted")
 
 
 class TentativaFiscalInline(admin.TabularInline):
