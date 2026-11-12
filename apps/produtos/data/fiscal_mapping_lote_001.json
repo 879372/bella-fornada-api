@@ -1,0 +1,80 @@
+{
+  "versao": 1,
+  "catalogo_checksum": "afd876fd080cd2d2f7a1351ec75e667ce1d9c321b3460309f67b9d49d42ffda8",
+  "fonte": "Receita Federal (Compêndio CECLAM e Soluções de Consulta de classificação), Portal Nacional da NF-e e Perguntas e Respostas EFD-Contribuições",
+  "observacao": "Lote 001: produtos de fabricação própria já vendidos. Aplicação interna no RN, empresa CRT 1. Itens ambíguos e mercadorias de revenda ficaram fora do lote.",
+  "produtos": [
+    {
+      "codigo_legado": 140,
+      "nome": "PAO KG",
+      "campos": {
+        "ncm": "19059090",
+        "cest": "",
+        "cfop": "5101",
+        "cst_icms": "102",
+        "cst_pis": "49",
+        "cst_cofins": "49",
+        "origem_mercadoria": "0",
+        "codigo_beneficio_fiscal": "",
+        "unidade_tributavel": "KG",
+        "gtin_tributavel": "",
+        "fator_conversao_tributavel": "1",
+        "aliquota_icms": "0",
+        "aliquota_pis": "0",
+        "aliquota_cofins": "0",
+        "tipo_origem_comercial": "FABRICACAO_PROPRIA",
+        "fiscal_confianca": "MEDIA",
+        "fiscal_fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/aduana-e-comercio-exterior/classificacao-fiscal-de-mercadorias/compedio-ceclam.pdf; https://sped.rfb.gov.br/estatico/A6/44AEB1BBD8AB6403004C3DA1F7F8B1C27E8DE8/Perguntas%20e%20Respostas%20EFD%20Contribui%C3%A7%C3%B5es.pdf",
+        "fiscal_observacao": "Pão pronto de fabricação própria vendido por KG. NCM residual de outros produtos de padaria; confirmar receita/ficha técnica com a contabilidade. Não se presumiu substituição tributária sem operação subsequente."
+      }
+    },
+    {
+      "codigo_legado": 149,
+      "nome": "PAO DE QUEIJO MINEIRO",
+      "campos": {
+        "ncm": "19059090",
+        "cest": "",
+        "cfop": "5101",
+        "cst_icms": "102",
+        "cst_pis": "49",
+        "cst_cofins": "49",
+        "origem_mercadoria": "0",
+        "codigo_beneficio_fiscal": "",
+        "unidade_tributavel": "KG",
+        "gtin_tributavel": "",
+        "fator_conversao_tributavel": "1",
+        "aliquota_icms": "0",
+        "aliquota_pis": "0",
+        "aliquota_cofins": "0",
+        "tipo_origem_comercial": "FABRICACAO_PROPRIA",
+        "fiscal_confianca": "MEDIA",
+        "fiscal_fonte": "https://normas.receita.fazenda.gov.br/sijut2consulta/anexoOutros.action?idArquivoBinario=78187; https://sped.rfb.gov.br/estatico/A6/44AEB1BBD8AB6403004C3DA1F7F8B1C27E8DE8/Perguntas%20e%20Respostas%20EFD%20Contribui%C3%A7%C3%B5es.pdf",
+        "fiscal_observacao": "Pão de queijo pronto de fabricação própria vendido por KG. A SC Cosit 98.040/2025 classifica pão de queijo preparado em 19059090; confirmar a ficha técnica do produto da loja."
+      }
+    },
+    {
+      "codigo_legado": 809,
+      "nome": "PAO CAPPUCCINO",
+      "campos": {
+        "ncm": "19059090",
+        "cest": "",
+        "cfop": "5101",
+        "cst_icms": "102",
+        "cst_pis": "49",
+        "cst_cofins": "49",
+        "origem_mercadoria": "0",
+        "codigo_beneficio_fiscal": "",
+        "unidade_tributavel": "KG",
+        "gtin_tributavel": "",
+        "fator_conversao_tributavel": "1",
+        "aliquota_icms": "0",
+        "aliquota_pis": "0",
+        "aliquota_cofins": "0",
+        "tipo_origem_comercial": "FABRICACAO_PROPRIA",
+        "fiscal_confianca": "MEDIA",
+        "fiscal_fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/aduana-e-comercio-exterior/classificacao-fiscal-de-mercadorias/compedio-ceclam.pdf; https://sped.rfb.gov.br/estatico/A6/44AEB1BBD8AB6403004C3DA1F7F8B1C27E8DE8/Perguntas%20e%20Respostas%20EFD%20Contribui%C3%A7%C3%B5es.pdf",
+        "fiscal_observacao": "Pão doce pronto de fabricação própria vendido por KG, enquadrado provisoriamente no item residual 19059090. Confirmar ingredientes e ficha técnica com a contabilidade."
+      }
+    }
+  ]
+}
