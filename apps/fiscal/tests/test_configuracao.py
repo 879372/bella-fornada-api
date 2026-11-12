@@ -35,3 +35,26 @@ def test_configuracao_fiscal_exige_gestao(api_client, django_user_model):
     user = django_user_model.objects.create_user("caixa", password="teste123")
     api_client.force_authenticate(user=user)
     assert api_client.get("/api/fiscal/configuracao/").status_code == 403
+
+
+@pytest.mark.django_db
+def test_atualiza_configuracao_por_json_preservando_certificado_vazio(auth_client):
+    response = auth_client.patch(
+        "/api/fiscal/configuracao/",
+        {
+            "cnpj": "41.771.788/0001-17",
+            "cep": "59575-000",
+            "codigo_municipio": "2403608",
+            "uf": "rn",
+            "razao_social": "E S G DOS SANTOS",
+            "certificado": {},
+            "certificado_configurado": False,
+            "updated_at": "2026-11-09T23:02:34-03:00",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["cnpj"] == "41771788000117"
+    assert response.data["cep"] == "59575000"
+    assert response.data["uf"] == "RN"

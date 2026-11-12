@@ -4,7 +4,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import BasePermission, IsAuthenticated
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from cryptography.hazmat.primitives.serialization.pkcs12 import load_key_and_certificates
@@ -39,14 +39,20 @@ class IsGestaoFiscal(BasePermission):
 
 class ConfiguracaoFiscalView(APIView):
     permission_classes = [IsAuthenticated, IsGestaoFiscal]
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get(self, request):
         return Response(ConfiguracaoFiscalSerializer(ConfiguracaoFiscal.atual()).data)
 
     def patch(self, request):
+        data = request.data.copy()
+        # Formulários JSON podem serializar um campo de arquivo vazio como {}.
+        # Nesse caso, preserve o certificado já salvo; uploads reais continuam
+        # sendo recebidos exclusivamente via multipart/form-data.
+        if isinstance(data.get("certificado"), dict) and not data["certificado"]:
+            data.pop("certificado")
         serializer = ConfiguracaoFiscalSerializer(
-            ConfiguracaoFiscal.atual(), data=request.data, partial=True
+            ConfiguracaoFiscal.atual(), data=data, partial=True
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()

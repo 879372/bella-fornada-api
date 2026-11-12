@@ -55,6 +55,15 @@ class ConfiguracaoFiscalSerializer(serializers.ModelSerializer):
     def get_certificado_senha_configurada(self, obj): return bool(obj.certificado_senha_encrypted)
     def get_csc_configurado(self, obj): return bool(obj.csc_encrypted)
 
+    def to_internal_value(self, data):
+        data = data.copy()
+        # Máscaras do formulário não devem estourar o max_length do model antes
+        # que a validação consiga normalizar os documentos.
+        for field in ("cnpj", "codigo_municipio", "cep"):
+            if field in data and data[field] is not None:
+                data[field] = "".join(c for c in str(data[field]) if c.isdigit())
+        return super().to_internal_value(data)
+
     def validate_certificado(self, value):
         if not value.name.lower().endswith((".pfx", ".p12")):
             raise serializers.ValidationError("Envie um certificado A1 .pfx ou .p12.")
