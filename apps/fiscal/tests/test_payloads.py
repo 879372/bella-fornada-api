@@ -85,3 +85,22 @@ def test_item_payload_applies_taxable_unit_conversion():
     ))._items()[0]
     assert payload["quantidadeTributavel"] == Decimal("24.0000")
     assert payload["valorUnitarioTributavel"] == Decimal("0.4166666667")
+
+
+def test_payment_payload_uses_current_geranet_field_names():
+    result = builder(item())
+    result.venda.pagamentos = SimpleNamespace(all=lambda: [
+        SimpleNamespace(forma="PIX", valor=Decimal("10.00")),
+    ])
+    result.venda.total_liquido = Decimal("8.00")
+
+    payload = result._payments()
+
+    assert payload == {
+        "troco": Decimal("2.00"),
+        "detalhamento": [{
+            "tipo": "17",
+            "valor": Decimal("10.00"),
+            "indicadorPagamento": "0",
+        }],
+    }

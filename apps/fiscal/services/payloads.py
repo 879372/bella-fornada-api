@@ -216,11 +216,11 @@ class VendaFiscalPayloadBuilder:
         details = []
         for payment in payments:
             details.append({
-                "tipoPagamento": self.PAYMENT_CODES.get(payment.forma, "99"),
-                "valorPagamento": _money(payment.valor),
+                "tipo": self.PAYMENT_CODES.get(payment.forma, "99"),
+                "valor": _money(payment.valor),
                 "indicadorPagamento": "1" if payment.forma == "FIADO" else "0",
             })
-        paid = sum((item["valorPagamento"] for item in details), Decimal("0"))
+        paid = sum((item["valor"] for item in details), Decimal("0"))
         return {"troco": max(paid - _money(self.venda.total_liquido), Decimal("0")), "detalhamento": details}
 
     def _recipient(self, *, required):
