@@ -2,10 +2,13 @@ import csv
 
 from django.db.models import Q
 from django.http import HttpResponse
-from rest_framework import filters, viewsets
+from rest_framework import filters, permissions, viewsets
 from rest_framework.decorators import action
-from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from apps.usuarios.permissions import IsAdminOrManager
+
 from .barcodes import interpretar_etiqueta_balanca
 from .models import ConfiguracaoBalanca, Produto, Grupo
 from .serializers import (
@@ -70,6 +73,13 @@ class ProdutoViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nome', 'codigo_barras', 'codigo_legado']
     ordering_fields = ['nome', 'preco_venda', 'grupo']
+
+    def get_permissions(self):
+        if self.action in {'create', 'update', 'partial_update', 'destroy'}:
+            permission_classes = (permissions.IsAuthenticated, IsAdminOrManager)
+        else:
+            permission_classes = (permissions.IsAuthenticated,)
+        return [permission() for permission in permission_classes]
 
     def get_queryset(self):
         # Retorna todos os produtos para a gestão (ativos e inativos)

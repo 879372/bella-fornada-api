@@ -162,10 +162,14 @@ class FiscalService:
             locked.numero = self._safe(data.get("numero"), 20) or locked.numero
             locked.codigo_status = self._safe(data.get("cstat"), 20)
             locked.mensagem_sefaz = sanitize_text(data.get("mensagem", ""), max_length=500)
-            if xml is not None: locked.xml_conteudo = xml
-            if pdf is not None: locked.pdf_conteudo = pdf
-            if new_status == DocumentoFiscal.Status.AUTORIZADA: locked.autorizada_em = locked.autorizada_em or now
-            if new_status == DocumentoFiscal.Status.CANCELADA: locked.cancelada_em = locked.cancelada_em or now
+            if xml is not None:
+                locked.xml_conteudo = xml
+            if pdf is not None:
+                locked.pdf_conteudo = pdf
+            if new_status == DocumentoFiscal.Status.AUTORIZADA:
+                locked.autorizada_em = locked.autorizada_em or now
+            if new_status == DocumentoFiscal.Status.CANCELADA:
+                locked.cancelada_em = locked.cancelada_em or now
             locked.save()
             if old_status != new_status:
                 EventoFiscal.objects.create(

@@ -58,3 +58,26 @@ def test_estoque_negativo_permitido():
 
     estoque.refresh_from_db()
     assert estoque.quantidade == Decimal("-4.00")
+
+
+@pytest.mark.django_db
+def test_editar_produto_nao_regrava_estoque(auth_client):
+    produto = ProdutoFactory(nome='Produto antes')
+    estoque = EstoqueLojaFactory(
+        produto=produto,
+        quantidade=Decimal('7.500'),
+        loja='Loja Principal',
+    )
+
+    response = auth_client.patch(
+        f'/api/produtos/{produto.pk}/',
+        {'nome': 'Produto depois', 'estoque_inicial': '99.000'},
+        format='json',
+    )
+
+    estoque.refresh_from_db()
+    produto.refresh_from_db()
+    assert response.status_code == 200
+    assert produto.nome == 'Produto depois'
+    assert estoque.quantidade == Decimal('7.500')
+    assert MovimentacaoEstoque.objects.filter(produto=produto).count() == 0

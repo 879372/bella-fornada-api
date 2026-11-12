@@ -89,12 +89,15 @@ class ConfiguracaoFiscalSerializer(serializers.ModelSerializer):
         certificado = validated_data.pop("certificado", None)
         senha = validated_data.pop("certificado_senha", None)
         csc = validated_data.pop("csc", None)
-        if api_key: instance.api_key_encrypted = encrypt_secret(api_key)
+        if api_key:
+            instance.api_key_encrypted = encrypt_secret(api_key)
         if certificado:
             instance.certificado_encrypted = encrypt_secret(base64.b64encode(certificado.read()).decode("ascii"))
             instance.certificado_nome = certificado.name[:255]
-        if senha: instance.certificado_senha_encrypted = encrypt_secret(senha)
-        if csc: instance.csc_encrypted = encrypt_secret(csc)
+        if senha:
+            instance.certificado_senha_encrypted = encrypt_secret(senha)
+        if csc:
+            instance.csc_encrypted = encrypt_secret(csc)
         return super().update(instance, validated_data)
 
 

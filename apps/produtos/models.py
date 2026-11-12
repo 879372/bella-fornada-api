@@ -49,6 +49,19 @@ class ConfiguracaoBalanca(models.Model):
         return self.nome
 
 class Produto(BaseModel):
+    class TipoOrigemComercial(models.TextChoices):
+        FABRICACAO_PROPRIA = 'FABRICACAO_PROPRIA', 'Fabricação própria'
+        REVENDA = 'REVENDA', 'Revenda'
+        INSUMO = 'INSUMO', 'Insumo'
+        MISTO = 'MISTO', 'Uso misto'
+        NAO_CLASSIFICADO = 'NAO_CLASSIFICADO', 'Não classificado'
+
+    class ConfiancaFiscal(models.TextChoices):
+        ALTA = 'ALTA', 'Alta'
+        MEDIA = 'MEDIA', 'Média'
+        BAIXA = 'BAIXA', 'Baixa'
+        NAO_REVISADO = 'NAO_REVISADO', 'Não revisado'
+
     codigo_legado = models.IntegerField(unique=True, null=True, blank=True, help_text="Código da Mercadoria no sistema legado")
     nome = models.CharField(max_length=255)
     codigo_barras = models.CharField(max_length=100, blank=True, null=True)
@@ -88,6 +101,19 @@ class Produto(BaseModel):
     aliquota_icms = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     aliquota_pis = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     aliquota_cofins = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    tipo_origem_comercial = models.CharField(
+        max_length=24,
+        choices=TipoOrigemComercial.choices,
+        default=TipoOrigemComercial.NAO_CLASSIFICADO,
+    )
+    fiscal_confianca = models.CharField(
+        max_length=16,
+        choices=ConfiancaFiscal.choices,
+        default=ConfiancaFiscal.NAO_REVISADO,
+    )
+    fiscal_fonte = models.TextField(blank=True)
+    fiscal_observacao = models.TextField(blank=True)
+    fiscal_revisado_em = models.DateTimeField(null=True, blank=True)
 
     objects = ActiveManager()
     all_objects = models.Manager()
@@ -107,6 +133,53 @@ class Produto(BaseModel):
 
     def __str__(self):
         return f"{self.codigo_legado} - {self.nome}"
+
+
+class LoteRevisaoFiscal(BaseModel):
+    class Status(models.TextChoices):
+        APLICADO = 'APLICADO', 'Aplicado'
+        REVERTIDO = 'REVERTIDO', 'Revertido'
+
+    status = models.CharField(max_length=12, choices=Status.choices)
+    catalogo_checksum = models.CharField(max_length=64)
+    mapeamento_checksum = models.CharField(max_length=64)
+    fonte = models.TextField(blank=True)
+    observacao = models.TextField(blank=True)
+    revertido_em = models.DateTimeField(null=True, blank=True)
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        ordering = ('-created_at',)
+
+
+class ItemRevisaoFiscal(BaseModel):
+    lote = models.ForeignKey(
+        LoteRevisaoFiscal,
+        on_delete=models.PROTECT,
+        related_name='itens',
+    )
+    produto = models.ForeignKey(
+        Produto,
+        on_delete=models.PROTECT,
+        related_name='revisoes_fiscais',
+    )
+    codigo_legado = models.IntegerField()
+    nome = models.CharField(max_length=255)
+    antes = models.JSONField()
+    depois = models.JSONField()
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=('lote', 'produto'),
+                name='uniq_produto_por_lote_revisao_fiscal',
+            )
+        ]
 
 class EstoqueLoja(BaseModel):
     produto = models.ForeignKey(Produto, on_delete=models.CASCADE, related_name='estoques')

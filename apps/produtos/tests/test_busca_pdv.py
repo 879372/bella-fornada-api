@@ -1,5 +1,6 @@
 import pytest
 
+from apps.produtos.barcodes import gtin_valido
 from apps.produtos.tests.factories import ProdutoFactory
 
 
@@ -59,3 +60,9 @@ def test_por_codigo_rejeita_etiqueta_com_digito_verificador_invalido(auth_client
     response = auth_client.get('/api/produtos/por-codigo/', {'codigo': '2001490000845'})
 
     assert response.data == []
+
+
+def test_gtin_valido_rejeita_codigos_internos_e_aceita_gtin_comercial():
+    assert gtin_valido('7896045112968') is True
+    assert gtin_valido('7770000001408') is False
+    assert gtin_valido('2001490000844') is False

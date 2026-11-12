@@ -6,11 +6,15 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.utils import timezone
 
 from apps.fiscal.crypto import decrypt_secret
+from apps.produtos.barcodes import gtin_valido
+from apps.produtos.fiscal_codes import NORMAL_ICMS_CST, PIS_COFINS_CST, SIMPLES_CSOSN
+from apps.produtos.models import Produto
 
 from .errors import FiscalConfigurationError, FiscalValidationError
 
 CENT = Decimal("0.01")
 FOUR = Decimal("0.0001")
+TEN = Decimal("0.0000000001")
 
 
 def only_digits(value):
@@ -133,6 +137,13 @@ class VendaFiscalPayloadBuilder:
         result = []
         for index, item in enumerate(sale_items):
             p = item.produto
+            if p.fiscal_confianca not in {
+                Produto.ConfiancaFiscal.ALTA,
+                Produto.ConfiancaFiscal.MEDIA,
+            }:
+                raise FiscalValidationError(
+                    f"O produto '{p.nome}' ainda não possui revisão fiscal aprovada."
+                )
             ncm, cfop = only_digits(p.ncm), only_digits(p.cfop)
             if len(ncm) != 8 or ncm == "00000000":
                 raise FiscalValidationError(f"O produto '{p.nome}' precisa de NCM válido.")
@@ -146,25 +157,52 @@ class VendaFiscalPayloadBuilder:
                 freight = (freight_total * line / gross_total).quantize(CENT)
                 allocated_discount += discount
                 allocated_freight += freight
-            barcode = only_digits(p.codigo_barras)
-            ean = barcode if len(barcode) in {8, 12, 13, 14} else "SEM GTIN"
+            commercial_gtin = only_digits(p.codigo_barras)
+            taxable_gtin = only_digits(getattr(p, "gtin_tributavel", ""))
+            gtin_candidate = (
+                commercial_gtin if gtin_valido(commercial_gtin) else taxable_gtin
+            )
+            ean = gtin_candidate if gtin_valido(gtin_candidate) else "SEM GTIN"
             cst = str(p.cst_icms or "").strip()
-            if len(cst) not in {2, 3} or not cst.isdigit():
-                raise FiscalValidationError(f"O produto '{p.nome}' precisa de CST/CSOSN válido.")
+            regime_simples = self.config.codigo_regime_tributario in {"1", "4"}
+            valid_icms_codes = SIMPLES_CSOSN if regime_simples else NORMAL_ICMS_CST
+            if cst not in valid_icms_codes:
+                label = "CSOSN" if regime_simples else "CST ICMS"
+                raise FiscalValidationError(f"O produto '{p.nome}' precisa de {label} válido.")
+            pis_cst = str(p.cst_pis or "").strip()
+            cofins_cst = str(p.cst_cofins or "").strip()
+            if pis_cst not in PIS_COFINS_CST:
+                raise FiscalValidationError(f"O produto '{p.nome}' precisa de CST PIS válido.")
+            if cofins_cst not in PIS_COFINS_CST:
+                raise FiscalValidationError(f"O produto '{p.nome}' precisa de CST COFINS válido.")
+
+            quantidade = Decimal(item.quantidade)
+            valor_unitario = Decimal(item.preco_unitario)
+            fator = Decimal(getattr(p, "fator_conversao_tributavel", 1) or 1)
+            if fator <= 0:
+                raise FiscalValidationError(
+                    f"O produto '{p.nome}' precisa de fator de conversão tributável válido."
+                )
+            unidade_comercial = (p.unidade_medida or "UN").upper()[:6]
+            unidade_tributavel = (
+                getattr(p, "unidade_tributavel", "") or unidade_comercial
+            ).upper()[:6]
             fiscal_item = {
-                "quantidade": Decimal(item.quantidade).quantize(FOUR),
-                "valorUnitario": Decimal(item.preco_unitario).quantize(FOUR),
+                "quantidade": quantidade.quantize(FOUR),
+                "valorUnitario": valor_unitario.quantize(FOUR),
                 "valorTotal": line, "desconto": discount, "frete": freight,
                 "seguro": Decimal("0.00"), "outro": Decimal("0.00"),
                 "ncmProduto": ncm, "cest": only_digits(p.cest), "tipoItem": "00",
                 "eanProduto": ean, "codigoProduto": str(p.codigo_legado or p.pk),
                 "nomeProduto": p.nome[:120], "cfop": cfop,
-                "unidadeMedidaProduto": (p.unidade_medida or "UN").upper()[:6],
+                "unidadeMedidaProduto": unidade_comercial,
+                "unidadeTributavel": unidade_tributavel,
+                "quantidadeTributavel": (quantidade * fator).quantize(FOUR),
+                "valorUnitarioTributavel": (valor_unitario / fator).quantize(TEN),
                 "origemProduto": str(p.origem_mercadoria or "0"),
-                "pisCst": str(p.cst_pis or "08"), "pisAliquota": Decimal(p.aliquota_pis or 0),
-                "cofinsCst": str(p.cst_cofins or "08"), "cofinsAliquota": Decimal(p.aliquota_cofins or 0),
+                "pisCst": pis_cst, "pisAliquota": Decimal(p.aliquota_pis or 0),
+                "cofinsCst": cofins_cst, "cofinsAliquota": Decimal(p.aliquota_cofins or 0),
             }
-            regime_simples = self.config.codigo_regime_tributario in {"1", "4"}
             fiscal_item["icmsCsosn" if regime_simples else "icmsCst"] = cst
             if p.codigo_beneficio_fiscal:
                 fiscal_item["codigoBeneficioFiscal"] = p.codigo_beneficio_fiscal
