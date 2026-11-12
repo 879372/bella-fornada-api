@@ -26,7 +26,7 @@ def builder(product_item):
     sale = SimpleNamespace(itens=items, desconto=0, taxa_entrega=0)
     config = SimpleNamespace(codigo_regime_tributario="1")
     result = object.__new__(VendaFiscalPayloadBuilder)
-    result.venda, result.config = sale, config
+    result.venda, result.config, result.tipo = sale, config, "NFE"
     return result
 
 
@@ -39,6 +39,26 @@ def test_item_payload_uses_geranet_field_names():
     assert payload["unidadeTributavel"] == "UN"
     assert payload["quantidadeTributavel"] == Decimal("2.0000")
     assert payload["valorUnitarioTributavel"] == Decimal("5.0000000000")
+
+
+def test_nfce_homologation_uses_required_first_item_description():
+    result = builder(item(nome="PAO DE QUEIJO MINEIRO"))
+    result.tipo = "NFCE"
+    result.config.ambiente = "homologacao"
+
+    payload = result._items()[0]
+
+    assert payload["nomeProduto"] == (
+        "NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL"
+    )
+
+
+def test_production_keeps_real_product_description():
+    result = builder(item(nome="PAO DE QUEIJO MINEIRO"))
+    result.tipo = "NFCE"
+    result.config.ambiente = "producao"
+
+    assert result._items()[0]["nomeProduto"] == "PAO DE QUEIJO MINEIRO"
 
 
 def test_item_payload_rejects_placeholder_ncm():

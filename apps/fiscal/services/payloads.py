@@ -15,6 +15,9 @@ from .errors import FiscalConfigurationError, FiscalValidationError
 CENT = Decimal("0.01")
 FOUR = Decimal("0.0001")
 TEN = Decimal("0.0000000001")
+HOMOLOGATION_ITEM_DESCRIPTION = (
+    "NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL"
+)
 
 
 def only_digits(value):
@@ -194,7 +197,7 @@ class VendaFiscalPayloadBuilder:
                 "seguro": Decimal("0.00"), "outro": Decimal("0.00"),
                 "ncmProduto": ncm, "cest": only_digits(p.cest), "tipoItem": "00",
                 "eanProduto": ean, "codigoProduto": str(p.codigo_legado or p.pk),
-                "nomeProduto": p.nome[:120], "cfop": cfop,
+                "nomeProduto": self._item_description(p, index), "cfop": cfop,
                 "unidadeMedidaProduto": unidade_comercial,
                 "unidadeTributavel": unidade_tributavel,
                 "quantidadeTributavel": (quantidade * fator).quantize(FOUR),
@@ -208,6 +211,11 @@ class VendaFiscalPayloadBuilder:
                 fiscal_item["codigoBeneficioFiscal"] = p.codigo_beneficio_fiscal
             result.append(fiscal_item)
         return result
+
+    def _item_description(self, product, index):
+        if self.tipo == "NFCE" and self._environment() == "2" and index == 0:
+            return HOMOLOGATION_ITEM_DESCRIPTION
+        return product.nome[:120]
 
     def _payments(self):
         payments = list(self.venda.pagamentos.all())
