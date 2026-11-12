@@ -58,3 +58,17 @@ def test_atualiza_configuracao_por_json_preservando_certificado_vazio(auth_clien
     assert response.data["cnpj"] == "41771788000117"
     assert response.data["cep"] == "59575000"
     assert response.data["uf"] == "RN"
+
+
+@pytest.mark.django_db
+def test_validacao_informa_quais_campos_estao_pendentes(auth_client):
+    config = ConfiguracaoFiscal.atual()
+    config.razao_social = "Empresa Teste"
+    config.save()
+
+    response = auth_client.post("/api/fiscal/configuracao/validar/")
+
+    assert response.status_code == 400
+    assert "Certificado A1" in response.data["campos_pendentes"]
+    assert "CNPJ" in response.data["campos_pendentes"]
+    assert "Razão social" not in response.data["campos_pendentes"]

@@ -64,13 +64,30 @@ class ValidarConfiguracaoFiscalView(APIView):
 
     def post(self, request):
         config = ConfiguracaoFiscal.atual()
-        missing = [field for field in (
-            "api_key_encrypted", "certificado_encrypted", "cnpj", "inscricao_estadual",
-            "razao_social", "logradouro", "numero", "bairro", "municipio",
-            "codigo_municipio", "uf", "cep",
-        ) if not getattr(config, field)]
+        required_fields = {
+            "api_key_encrypted": "Chave da API Geranet",
+            "certificado_encrypted": "Certificado A1",
+            "certificado_senha_encrypted": "Senha do certificado A1",
+            "cnpj": "CNPJ",
+            "inscricao_estadual": "Inscrição Estadual",
+            "razao_social": "Razão social",
+            "logradouro": "Logradouro",
+            "numero": "Número",
+            "bairro": "Bairro",
+            "municipio": "Município",
+            "codigo_municipio": "Código IBGE do município",
+            "uf": "UF",
+            "cep": "CEP",
+        }
+        missing = [label for field, label in required_fields.items() if not getattr(config, field)]
         if missing:
-            return Response({"detail": "A configuração fiscal ainda possui campos obrigatórios pendentes."}, status=400)
+            return Response(
+                {
+                    "detail": "Preencha os campos pendentes: " + ", ".join(missing) + ".",
+                    "campos_pendentes": missing,
+                },
+                status=400,
+            )
         try:
             certificate_bytes = base64.b64decode(decrypt_secret(config.certificado_encrypted), validate=True)
             password = decrypt_secret(config.certificado_senha_encrypted).encode() or None
