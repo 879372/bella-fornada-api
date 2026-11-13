@@ -74,6 +74,52 @@ def _beverage_st(name, group):
 
 
 def _specific_ncm(name, group, own):
+    # Para itens preparados pela loja, classificar o produto final, e não um
+    # ingrediente citado no nome (por exemplo, pão COM queijo ou manteiga).
+    if own:
+        if 'TAPIOCA' in name:
+            return '19030000', 'tapioca preparada'
+        if contains_any(name, ('SOPA', 'CANJA')):
+            return '21041011', 'preparação para caldo/sopa'
+        if contains_any(name, ('JANTA', 'BUFFET', 'SALADA', 'OVO MEXIDO',
+                               'CAFE DA MANHA', 'CUSCUZ')):
+            return '21069090', 'preparação alimentícia pronta'
+        if group == 'COZINHA':
+            return '21069090', 'preparação alimentícia de fabricação própria'
+        if group in {'PADARIA', 'CONFEITARIA'}:
+            if name.startswith(('CAFE ', 'SUCO ', 'ACHOCOLATADO', 'CHOCOLATE QUENTE')):
+                return '22029900', 'bebida pronta não alcoólica'
+            return '19059090', 'produto de padaria/confeitaria de fabricação própria'
+
+    if group == 'PADARIA' and name.startswith(('PAO ', 'PÃO ')):
+        return '19059090', 'produto de padaria industrializado'
+
+    # Em produtos industrializados, a forma do produto prevalece sobre o
+    # sabor/ingrediente mencionado na descrição ("salgadinho de queijo",
+    # "biscoito de leite", "chocolate ao leite").
+    if not own:
+        if 'WAFER' in name or 'WEFER' in name:
+            return '19053200', 'wafer'
+        if 'BARRA DE CEREAL' in name:
+            return '19042000', 'barra/preparação de cereal'
+        if contains_any(name, ('FANDANGOS', 'PIPPO', 'CHEETOS', 'CHEETROS', 'DORITOS',
+                               'TORCIDA ', 'KRO SABOR', 'CEBOLITOS', 'PIPOCA BOKUS',
+                               'KI GALINHA', 'KI CHURRASCO', 'KI QUEIJO')):
+            return '19041000', 'salgadinho/produto à base de cereal'
+        if contains_any(name, ('CREME CRACKER', 'CREME CRACK ', 'TORRADINHA',
+                               'SODA PRETA', 'SORDA PRETA', 'SODA BRANCA',
+                               'MARAGOGI SALGADA', 'PETISCO DE ALHO',
+                               'PETISCO DE CEBOLA', 'PETISCO DE CARNE DE SOL',
+                               'PETISCO DE QUEIJO')):
+            return '19059020', 'biscoito/petisco salgado'
+        if contains_any(name, ('BISCOITO', 'BOLACHA', 'ROSQUINHA', 'SEQUILHO', 'TARECO',
+                               'CASADINHA')):
+            return '19053100', 'biscoito doce'
+        if contains_any(name, ('KITKAT', 'BATON', 'CHOCOLATE', 'TRUFA', 'OVO DE COLHER')):
+            return '18069000', 'chocolate/produto contendo cacau'
+        if contains_any(name, ('CAPPUCCINO', 'CAFE COM LEITE')):
+            return '21011200', 'preparação à base de café'
+
     # Higiene, limpeza e descartáveis.
     rules = (
         (('CREME DENTAL',), '33061000', 'dentifrício'),
