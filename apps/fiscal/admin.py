@@ -1,6 +1,12 @@
 from django.contrib import admin
 
-from .models import ConfiguracaoFiscal, DocumentoFiscal, EventoFiscal, TentativaFiscal
+from .models import (
+    ConfiguracaoFiscal,
+    DocumentoFiscal,
+    EventoFiscal,
+    InutilizacaoNumeracao,
+    TentativaFiscal,
+)
 
 
 @admin.register(ConfiguracaoFiscal)
@@ -88,4 +94,20 @@ class EventoFiscalAdmin(admin.ModelAdmin):
     list_display = ("documento", "tipo", "status_anterior", "status_novo", "criado_em")
     list_filter = ("tipo", "status_novo")
     readonly_fields = [field.name for field in EventoFiscal._meta.fields]
+
+
+@admin.register(InutilizacaoNumeracao)
+class InutilizacaoNumeracaoAdmin(admin.ModelAdmin):
+    list_display = (
+        "tipo",
+        "ambiente",
+        "serie",
+        "ano",
+        "numero_inicial",
+        "numero_final",
+        "status",
+        "created_at",
+    )
+    list_filter = ("tipo", "ambiente", "status", "ano")
+    readonly_fields = [field.name for field in InutilizacaoNumeracao._meta.fields]
 

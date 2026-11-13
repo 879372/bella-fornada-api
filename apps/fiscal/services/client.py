@@ -105,3 +105,6 @@ class GeranetClient:
 
     def cancelar(self, payload):
         return self._post("nfe/cancelar", payload)
+
+    def inutilizar_numeracao(self, payload):
+        return self._post("nfe/inutilizar-numeracao", payload)

@@ -140,6 +140,60 @@ class ConfiguracaoFiscal(BaseModel):
         return self.razao_social or "Configuração fiscal"
 
 
+class InutilizacaoNumeracao(BaseModel):
+    class Status(models.TextChoices):
+        PROCESSANDO = "PROCESSANDO", "Processando"
+        INUTILIZADA = "INUTILIZADA", "Inutilizada"
+        REJEITADA = "REJEITADA", "Rejeitada"
+        ERRO = "ERRO", "Erro"
+
+    tipo = models.CharField(max_length=4, choices=DocumentoFiscal.Tipo.choices)
+    ambiente = models.CharField(max_length=12, choices=DocumentoFiscal.Ambiente.choices)
+    status = models.CharField(
+        max_length=12,
+        choices=Status.choices,
+        default=Status.PROCESSANDO,
+        db_index=True,
+    )
+    serie = models.CharField(max_length=3)
+    ano = models.PositiveSmallIntegerField()
+    numero_inicial = models.PositiveIntegerField()
+    numero_final = models.PositiveIntegerField()
+    justificativa = models.CharField(max_length=255)
+    codigo_status = models.CharField(max_length=20, blank=True)
+    mensagem_sefaz = models.CharField(max_length=500, blank=True)
+    protocolo = models.CharField(max_length=50, blank=True)
+    xml_conteudo = models.BinaryField(null=True, blank=True)
+    solicitada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="inutilizacoes_fiscais_solicitadas",
+        null=True,
+        blank=True,
+    )
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        app_label = "fiscal"
+        ordering = ["-created_at"]
+        verbose_name = "Inutilização de numeração"
+        verbose_name_plural = "Inutilizações de numeração"
+        indexes = [
+            models.Index(
+                fields=["tipo", "ambiente", "serie", "ano"],
+                name="fiscal_inut_faixa_idx",
+            )
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.get_tipo_display()} série {self.serie} "
+            f"{self.numero_inicial}-{self.numero_final}/{self.ano}"
+        )
+
+
 class TentativaFiscal(models.Model):
     class Operacao(models.TextChoices):
         EMISSAO = "EMISSAO", "Emissão"

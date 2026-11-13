@@ -2,7 +2,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from apps.fiscal.models import ConfiguracaoFiscal, DocumentoFiscal, TentativaFiscal
+from apps.fiscal.models import (
+    ConfiguracaoFiscal,
+    DocumentoFiscal,
+    InutilizacaoNumeracao,
+    TentativaFiscal,
+)
+from apps.fiscal.services.errors import FiscalConflictError
 from apps.fiscal.services.client import GeranetResponse
 from apps.fiscal.services.fiscal import FiscalService
 from apps.vendas.tests.factories import VendaFactory
@@ -96,3 +102,91 @@ def test_documento_autorizado_continua_idempotente(monkeypatch):
 
     assert created is False
     assert result.pk == document.pk
+
+
+@pytest.mark.django_db
+def test_nao_reenvia_rejeitada_em_ambiente_diferente(monkeypatch):
+    config = ConfiguracaoFiscal.atual()
+    config.ambiente = "producao"
+    config.save()
+    venda = VendaFactory(status="FINALIZADA", total="10.00")
+    DocumentoFiscal.objects.create(
+        venda=venda,
+        tipo="NFCE",
+        status="REJEITADA",
+        ambiente="homologacao",
+        referencia=f"venda:{venda.id_externo}:nfce",
+        numero="1",
+        serie="2",
+    )
+    monkeypatch.setattr(
+        "apps.fiscal.services.fiscal.VendaFiscalPayloadBuilder",
+        lambda *args, **kwargs: pytest.fail("não deveria construir o payload"),
+    )
+
+    with pytest.raises(FiscalConflictError, match="outro ambiente fiscal"):
+        FiscalService(client=SimpleNamespace()).emitir(venda=venda, tipo="NFCE")
+
+
+@pytest.mark.django_db
+def test_inutiliza_faixa_e_registra_retorno(monkeypatch, admin_user):
+    config = ConfiguracaoFiscal.atual()
+    config.ambiente = "homologacao"
+    config.save()
+    monkeypatch.setattr(
+        "apps.fiscal.services.fiscal.InutilizacaoFiscalPayloadBuilder.build",
+        lambda *args, **kwargs: {"acao": "inutilizarNumeracao"},
+    )
+    client = SimpleNamespace(
+        inutilizar_numeracao=lambda payload: GeranetResponse(
+            data={
+                "situacao": "sucesso",
+                "cstat": "102",
+                "mensagem": "Inutilização de número homologado",
+                "protocolo": "123456789",
+            },
+            status_code=200,
+        )
+    )
+
+    record = FiscalService(client=client).inutilizar_numeracao(
+        tipo="NFCE",
+        serie="2",
+        ano=2026,
+        numero_inicial=3,
+        numero_final=4,
+        justificativa="Numeração não utilizada no sistema.",
+        usuario=admin_user,
+    )
+
+    assert record.status == InutilizacaoNumeracao.Status.INUTILIZADA
+    assert record.codigo_status == "102"
+    assert record.ambiente == "homologacao"
+    assert record.solicitada_por == admin_user
+
+
+@pytest.mark.django_db
+def test_nao_inutiliza_numero_autorizado():
+    config = ConfiguracaoFiscal.atual()
+    config.ambiente = "producao"
+    config.save()
+    venda = VendaFactory(status="FINALIZADA", total="10.00")
+    DocumentoFiscal.objects.create(
+        venda=venda,
+        tipo="NFCE",
+        status="AUTORIZADA",
+        ambiente="producao",
+        referencia=f"venda:{venda.id_externo}:nfce",
+        numero="2",
+        serie="2",
+    )
+
+    with pytest.raises(FiscalConflictError, match="número autorizado"):
+        FiscalService(client=SimpleNamespace()).inutilizar_numeracao(
+            tipo="NFCE",
+            serie="2",
+            ano=2026,
+            numero_inicial=1,
+            numero_final=3,
+            justificativa="Numeração não utilizada no sistema.",
+        )

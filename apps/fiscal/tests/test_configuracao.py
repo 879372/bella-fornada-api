@@ -2,7 +2,7 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.fiscal.crypto import decrypt_secret
-from apps.fiscal.models import ConfiguracaoFiscal
+from apps.fiscal.models import ConfiguracaoFiscal, InutilizacaoNumeracao
 
 
 @pytest.mark.django_db
@@ -72,3 +72,49 @@ def test_validacao_informa_quais_campos_estao_pendentes(auth_client):
     assert "Certificado A1" in response.data["campos_pendentes"]
     assert "CNPJ" in response.data["campos_pendentes"]
     assert "Razão social" not in response.data["campos_pendentes"]
+
+
+@pytest.mark.django_db
+def test_inutilizacao_exige_gestao(api_client, django_user_model):
+    user = django_user_model.objects.create_user("caixa-inutilizacao", password="teste123")
+    api_client.force_authenticate(user=user)
+
+    assert api_client.get("/api/fiscal/inutilizacoes/").status_code == 403
+
+
+@pytest.mark.django_db
+def test_solicita_inutilizacao_pelo_endpoint(auth_client, monkeypatch):
+    def fake_inutilizar(self, **kwargs):
+        return InutilizacaoNumeracao.objects.create(
+            tipo=kwargs["tipo"],
+            ambiente="homologacao",
+            status="INUTILIZADA",
+            serie=kwargs["serie"],
+            ano=kwargs["ano"],
+            numero_inicial=kwargs["numero_inicial"],
+            numero_final=kwargs["numero_final"],
+            justificativa=kwargs["justificativa"],
+            codigo_status="102",
+        )
+
+    monkeypatch.setattr(
+        "apps.fiscal.views.FiscalService.inutilizar_numeracao",
+        fake_inutilizar,
+    )
+
+    response = auth_client.post(
+        "/api/fiscal/inutilizacoes/",
+        {
+            "tipo": "NFCE",
+            "serie": "2",
+            "ano": 2026,
+            "numero_inicial": 3,
+            "numero_final": 3,
+            "justificativa": "Numeração não utilizada no sistema.",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["status"] == "INUTILIZADA"
+    assert response.data["codigo_status"] == "102"

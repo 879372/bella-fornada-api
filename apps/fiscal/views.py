@@ -15,13 +15,15 @@ from drf_spectacular.utils import extend_schema
 
 from apps.vendas.models import Venda
 
-from .models import ConfiguracaoFiscal, DocumentoFiscal
+from .models import ConfiguracaoFiscal, DocumentoFiscal, InutilizacaoNumeracao
 from .serializers import (
     CancelarDocumentoFiscalSerializer,
     ConfiguracaoFiscalSerializer,
     DocumentoFiscalSerializer,
     EmitirDocumentoFiscalSerializer,
     EventoFiscalSerializer,
+    InutilizacaoNumeracaoSerializer,
+    SolicitarInutilizacaoNumeracaoSerializer,
     VendaElegivelFiscalSerializer,
 )
 from .services.errors import FiscalError
@@ -29,12 +31,16 @@ from .services.fiscal import FiscalService
 from .crypto import decrypt_secret
 
 
+def _is_gestao_user(user):
+    if user.is_staff or user.is_superuser:
+        return True
+    perfil = getattr(user, "perfil_bella_fornada", None)
+    return bool(perfil and perfil.papel in {"ADMIN", "GERENTE"})
+
+
 class IsGestaoFiscal(BasePermission):
     def has_permission(self, request, view):
-        if request.user.is_staff or request.user.is_superuser:
-            return True
-        perfil = getattr(request.user, "perfil_bella_fornada", None)
-        return bool(perfil and perfil.papel in {"ADMIN", "GERENTE"})
+        return _is_gestao_user(request.user)
 
 
 class ConfiguracaoFiscalView(APIView):
@@ -129,7 +135,7 @@ class DocumentoFiscalViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         user = self.request.user
-        if not user.is_staff:
+        if not _is_gestao_user(user):
             queryset = queryset.filter(venda__sessao__operador=user)
 
         for field in ("status", "tipo", "ambiente", "canal", "referencia"):
@@ -143,7 +149,7 @@ class DocumentoFiscalViewSet(viewsets.ReadOnlyModelViewSet):
 
     @staticmethod
     def _assert_sale_access(venda, user):
-        if not user.is_staff and venda.sessao.operador_id != user.id:
+        if not _is_gestao_user(user) and venda.sessao.operador_id != user.id:
             raise PermissionDenied("Esta venda pertence a outro operador.")
 
     @extend_schema(
@@ -251,7 +257,7 @@ class DocumentoFiscalViewSet(viewsets.ReadOnlyModelViewSet):
             .filter(itens_count__gt=0, possui_documento_ativo=False)
             .order_by("-data")
         )
-        if not request.user.is_staff:
+        if not _is_gestao_user(request.user):
             queryset = queryset.filter(sessao__operador=request.user)
 
         page = self.paginate_queryset(queryset)
@@ -259,4 +265,47 @@ class DocumentoFiscalViewSet(viewsets.ReadOnlyModelViewSet):
         if page is not None:
             return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
+
+
+@extend_schema(tags=["Fiscal"])
+class InutilizacaoNumeracaoViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated, IsGestaoFiscal]
+    serializer_class = InutilizacaoNumeracaoSerializer
+    lookup_field = "id_externo"
+    queryset = InutilizacaoNumeracao.objects.select_related("solicitada_por").all()
+
+    @extend_schema(
+        request=SolicitarInutilizacaoNumeracaoSerializer,
+        responses={201: InutilizacaoNumeracaoSerializer},
+        description="Inutiliza uma faixa não utilizada de NF-e ou NFC-e na SEFAZ.",
+    )
+    def create(self, request, *args, **kwargs):
+        serializer = SolicitarInutilizacaoNumeracaoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            record = FiscalService().inutilizar_numeracao(
+                **serializer.validated_data,
+                usuario=request.user,
+            )
+        except FiscalError as exc:
+            return _fiscal_error_response(exc)
+        return Response(
+            InutilizacaoNumeracaoSerializer(record).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(responses={(200, "application/xml"): bytes})
+    @action(detail=True, methods=["get"], url_path="xml")
+    def xml(self, request, id_externo=None):
+        record = self.get_object()
+        if not record.xml_conteudo:
+            return Response(
+                {"detail": "O XML da inutilização ainda não está disponível."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        response = HttpResponse(bytes(record.xml_conteudo), content_type="application/xml")
+        response["Content-Disposition"] = (
+            f'attachment; filename="inutilizacao-{record.id_externo}.xml"'
+        )
+        return response
 

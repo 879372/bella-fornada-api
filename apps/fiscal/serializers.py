@@ -5,7 +5,13 @@ from rest_framework import serializers
 from apps.vendas.models import Venda
 
 from .crypto import encrypt_secret
-from .models import ConfiguracaoFiscal, DocumentoFiscal, EventoFiscal, TentativaFiscal
+from .models import (
+    ConfiguracaoFiscal,
+    DocumentoFiscal,
+    EventoFiscal,
+    InutilizacaoNumeracao,
+    TentativaFiscal,
+)
 from .services.fiscal import FiscalService
 
 
@@ -217,6 +223,53 @@ class EmitirDocumentoFiscalSerializer(serializers.Serializer):
 
 class CancelarDocumentoFiscalSerializer(serializers.Serializer):
     justificativa = serializers.CharField(min_length=15, max_length=255, trim_whitespace=True)
+
+
+class InutilizacaoNumeracaoSerializer(serializers.ModelSerializer):
+    tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    pode_baixar_xml = serializers.SerializerMethodField()
+
+    class Meta:
+        model = InutilizacaoNumeracao
+        fields = [
+            "id_externo",
+            "tipo",
+            "tipo_display",
+            "ambiente",
+            "status",
+            "status_display",
+            "serie",
+            "ano",
+            "numero_inicial",
+            "numero_final",
+            "justificativa",
+            "codigo_status",
+            "mensagem_sefaz",
+            "protocolo",
+            "pode_baixar_xml",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_pode_baixar_xml(self, obj):
+        return bool(obj.xml_conteudo)
+
+
+class SolicitarInutilizacaoNumeracaoSerializer(serializers.Serializer):
+    tipo = serializers.ChoiceField(choices=DocumentoFiscal.Tipo.choices)
+    serie = serializers.RegexField(r"^[0-9]{1,3}$")
+    ano = serializers.IntegerField(min_value=2000, max_value=2099)
+    numero_inicial = serializers.IntegerField(min_value=1)
+    numero_final = serializers.IntegerField(min_value=1)
+    justificativa = serializers.CharField(min_length=15, max_length=255, trim_whitespace=True)
+
+    def validate(self, attrs):
+        if attrs["numero_final"] < attrs["numero_inicial"]:
+            raise serializers.ValidationError(
+                {"numero_final": "O número final não pode ser menor que o inicial."}
+            )
+        return attrs
 
 
 class VendaElegivelFiscalSerializer(serializers.ModelSerializer):

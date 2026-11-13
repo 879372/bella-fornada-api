@@ -89,7 +89,6 @@ class VendaFiscalPayloadBuilder:
             "modelo": "65" if document.tipo == "NFCE" else "55",
             "ufEmitente": self.config.uf,
         }
-
     def _validate(self):
         if self.venda.status != "FINALIZADA" or not self.venda.itens.exists():
             raise FiscalValidationError("Somente vendas finalizadas e com itens podem emitir nota.")
@@ -271,3 +270,35 @@ class VendaFiscalPayloadBuilder:
         if address["logradouro"]:
             recipient.update(address)
         return recipient
+
+
+class InutilizacaoFiscalPayloadBuilder:
+    def __init__(self, configuracao):
+        self.config = configuracao
+
+    def build(self, *, tipo, serie, ano, numero_inicial, numero_final, justificativa):
+        if not self.config.api_key_encrypted or not self.config.certificado_encrypted:
+            raise FiscalConfigurationError("Configure a chave da Geranet e o certificado A1.")
+        try:
+            raw = base64.b64decode(
+                decrypt_secret(self.config.certificado_encrypted), validate=True
+            )
+        except Exception as exc:
+            raise FiscalConfigurationError("O certificado A1 armazenado é inválido.") from exc
+        return {
+            "acao": "inutilizarNumeracao",
+            "modeloDocumento": "nfe",
+            "cnpj": only_digits(self.config.cnpj),
+            "serie": str(serie),
+            "ano": str(ano),
+            "numeroInicial": str(numero_inicial),
+            "numeroFinal": str(numero_final),
+            "justificativa": justificativa,
+            "certificadoDigital": raw.hex(),
+            "senhaCertificadoDigital": decrypt_secret(
+                self.config.certificado_senha_encrypted
+            ),
+            "ambiente": "1" if self.config.ambiente == "producao" else "2",
+            "modelo": "65" if tipo == "NFCE" else "55",
+            "ufEmitente": self.config.uf,
+        }

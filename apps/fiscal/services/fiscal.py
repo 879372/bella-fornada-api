@@ -5,11 +5,17 @@ import re
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from apps.fiscal.models import ConfiguracaoFiscal, DocumentoFiscal, EventoFiscal, TentativaFiscal
+from apps.fiscal.models import (
+    ConfiguracaoFiscal,
+    DocumentoFiscal,
+    EventoFiscal,
+    InutilizacaoNumeracao,
+    TentativaFiscal,
+)
 
 from .client import FiscalBinaryResponse, GeranetClient
 from .errors import FiscalConflictError, FiscalValidationError, GeranetAPIError
-from .payloads import VendaFiscalPayloadBuilder
+from .payloads import InutilizacaoFiscalPayloadBuilder, VendaFiscalPayloadBuilder
 from .security import extract_safe_error, sanitize_text
 
 logger = logging.getLogger(__name__)
@@ -100,6 +106,11 @@ class FiscalService:
             config = ConfiguracaoFiscal.objects.select_for_update().get(
                 pk=ConfiguracaoFiscal.atual().pk
             )
+            if document.ambiente != config.ambiente:
+                raise FiscalConflictError(
+                    "O documento foi emitido em outro ambiente fiscal. "
+                    "Altere a configuração para o ambiente original antes de reenviar."
+                )
             builder = VendaFiscalPayloadBuilder(
                 venda,
                 tipo=document.tipo,
@@ -186,6 +197,118 @@ class FiscalService:
         document = self._apply_response(document, response.data, response.status_code, cancellation=True)
         self._finish_success(attempt, response)
         return document
+
+    def inutilizar_numeracao(
+        self,
+        *,
+        tipo,
+        serie,
+        ano,
+        numero_inicial,
+        numero_final,
+        justificativa,
+        usuario=None,
+    ):
+        tipo = str(tipo).upper()
+        serie = str(serie).strip()
+        justificativa = sanitize_text(justificativa, max_length=255)
+        if tipo not in DocumentoFiscal.Tipo.values:
+            raise FiscalValidationError("Tipo de documento fiscal inválido.")
+        if not serie.isdigit() or not 1 <= int(serie) <= 999:
+            raise FiscalValidationError("A série deve ser um número entre 1 e 999.")
+        serie = str(int(serie))
+        if not 2000 <= int(ano) <= 2099:
+            raise FiscalValidationError("Informe o ano completo entre 2000 e 2099.")
+        if numero_inicial < 1 or numero_final < numero_inicial:
+            raise FiscalValidationError("A faixa de numeração é inválida.")
+        if len(justificativa) < 15:
+            raise FiscalValidationError("A justificativa deve ter no mínimo 15 caracteres.")
+
+        config = ConfiguracaoFiscal.atual()
+        documents = DocumentoFiscal.all_objects.filter(
+            tipo=tipo,
+            ambiente=config.ambiente,
+            serie=serie,
+            status__in=[
+                DocumentoFiscal.Status.AUTORIZADA,
+                DocumentoFiscal.Status.CANCELADA,
+            ],
+        ).values_list("numero", flat=True)
+        conflicts = sorted(
+            int(number)
+            for number in documents
+            if str(number).isdigit() and numero_inicial <= int(number) <= numero_final
+        )
+        if conflicts:
+            raise FiscalConflictError(
+                "A faixa contém número autorizado ou cancelado no sistema: "
+                + ", ".join(str(number) for number in conflicts[:10])
+                + "."
+            )
+
+        overlapping = InutilizacaoNumeracao.objects.filter(
+            tipo=tipo,
+            ambiente=config.ambiente,
+            serie=serie,
+            ano=ano,
+            status__in=[
+                InutilizacaoNumeracao.Status.PROCESSANDO,
+                InutilizacaoNumeracao.Status.INUTILIZADA,
+            ],
+            numero_inicial__lte=numero_final,
+            numero_final__gte=numero_inicial,
+        ).exists()
+        if overlapping:
+            raise FiscalConflictError("A faixa informada já foi inutilizada ou está em processamento.")
+
+        payload = InutilizacaoFiscalPayloadBuilder(config).build(
+            tipo=tipo,
+            serie=serie,
+            ano=ano,
+            numero_inicial=numero_inicial,
+            numero_final=numero_final,
+            justificativa=justificativa,
+        )
+        record = InutilizacaoNumeracao.objects.create(
+            tipo=tipo,
+            ambiente=config.ambiente,
+            serie=serie,
+            ano=ano,
+            numero_inicial=numero_inicial,
+            numero_final=numero_final,
+            justificativa=justificativa,
+            solicitada_por=usuario if getattr(usuario, "is_authenticated", False) else None,
+        )
+        try:
+            response = self._client_for(config).inutilizar_numeracao(payload)
+        except GeranetAPIError as exc:
+            record.status = InutilizacaoNumeracao.Status.ERRO
+            record.mensagem_sefaz = sanitize_text(exc.message, max_length=500)
+            record.save(update_fields=["status", "mensagem_sefaz", "updated_at"])
+            raise
+
+        data = response.data
+        successful = (
+            str(data.get("situacao", "")).lower() == "sucesso"
+            and str(data.get("cstat", "")) == "102"
+        )
+        record.status = (
+            InutilizacaoNumeracao.Status.INUTILIZADA
+            if successful
+            else InutilizacaoNumeracao.Status.REJEITADA
+        )
+        record.codigo_status = self._safe(data.get("cstat"), 20)
+        record.mensagem_sefaz = sanitize_text(data.get("mensagem", ""), max_length=500)
+        record.protocolo = self._safe(data.get("protocolo"), 50)
+        try:
+            record.xml_conteudo = self._decode_hex(data.get("xml"), "XML")
+        except GeranetAPIError as exc:
+            record.status = InutilizacaoNumeracao.Status.ERRO
+            record.mensagem_sefaz = sanitize_text(exc.message, max_length=500)
+            record.save(update_fields=["status", "mensagem_sefaz", "updated_at"])
+            raise
+        record.save()
+        return record
 
     def baixar_xml(self, document):
         if not document.xml_conteudo:
