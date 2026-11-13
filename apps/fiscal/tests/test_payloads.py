@@ -124,3 +124,24 @@ def test_payment_payload_uses_current_geranet_field_names():
             "indicadorPagamento": "0",
         }],
     }
+
+
+def test_anonymous_nfce_marks_operation_as_final_consumer():
+    result = builder(item())
+    result.venda.cliente = None
+
+    recipient = result._recipient(required=False)
+
+    assert recipient == {
+        "consumidorFinal": "1",
+        "indicadorIEdestinatario": "9",
+        "inscricaoEstadual": "",
+    }
+
+
+def test_nfe_still_requires_recipient():
+    result = builder(item())
+    result.venda.cliente = None
+
+    with pytest.raises(FiscalValidationError, match="Selecione um cliente"):
+        result._recipient(required=True)

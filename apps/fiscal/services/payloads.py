@@ -236,7 +236,15 @@ class VendaFiscalPayloadBuilder:
         if not client:
             if required:
                 raise FiscalValidationError("Selecione um cliente para emitir NF-e.")
-            return None
+            # A Geranet usa estes campos do objeto cliente para preencher o
+            # indFinal da NFC-e, mesmo quando o consumidor não informa CPF.
+            # Sem o objeto, o motor assume consumidor normal e a SEFAZ rejeita
+            # a NFC-e com o cStat 716.
+            return {
+                "consumidorFinal": "1",
+                "indicadorIEdestinatario": "9",
+                "inscricaoEstadual": "",
+            }
         document = only_digits(client.cpf_cnpj)
         if len(document) not in {11, 14}:
             if required:
