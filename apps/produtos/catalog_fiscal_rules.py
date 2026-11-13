@@ -29,11 +29,14 @@ def contains_any(text, terms):
 def _is_own_production(product, name, group):
     if 'REVENDA' in name:
         return False
-    resale_in_padaria = (
-        'PEITO DE PERU', 'PRESUNTO', 'MORT ', 'MORTADELA', 'LOMBINHO',
-        'SALSICHA', 'QUEIJO ', 'MUSSARELA', 'NATA', 'MANTEIGA',
-    )
-    if group == 'PADARIA' and contains_any(name, resale_in_padaria):
+    resale_in_padaria = {
+        'PEITO DE PERU', 'PRESUNTO', 'PRESUNTO FATIA', 'SALSICHA', 'NATA',
+        'MANTEIGA', 'QUEIJO MANTEIGA', 'QUEIJO MUSSARELA', 'QUEIJO COALHO',
+        'MUSSARELA FATIA',
+    }
+    if group == 'PADARIA' and (
+        name in resale_in_padaria or name.startswith(('MORT ', 'MORTADELA'))
+    ):
         return False
     if group in {'PADARIA', 'COZINHA', 'CONFEITARIA'}:
         barcode = re.sub(r'\D', '', product.codigo_barras or '')
@@ -52,12 +55,12 @@ def _beverage_st(name, group):
         return ('22029900', '0301300', 'bebida energética sujeita a ST no RN')
     if 'GATORADE' in name:
         return ('22029900', '0301500', 'bebida hidroeletrolítica sujeita a ST no RN')
-    if contains_any(name, ('AGUA MINERAL', 'AGUA COM GAS', 'AGUA  INDAIA')):
+    if contains_any(name, ('AGUA MINERAL', 'AGUA COM GAS', 'AGUA INDAIA')):
         return ('22011000', '0300600', 'água mineral/potável sujeita a ST no RN')
     soda = (
         'COCA', 'PEPSI', 'GUARANA', 'FANTA', 'SPRITE', 'SUKITA', 'DORE ',
         'GRAPETTE', 'GUAPETTE', 'REFRI', 'REFRIGERANTE', 'SCHWEPPES',
-        'CAJUINA', 'H2OH',
+        'CAJUINA', 'H2OH', 'AGUA TONICA',
     )
     if contains_any(name, soda):
         if 'LATA' in name or re.search(r'\b(250|290|350|473)\s?ML\b', name):
@@ -157,6 +160,12 @@ def _specific_ncm(name, group, own):
         return '21039021', 'maionese'
     if contains_any(name, ('CALDO ', 'SAZON', 'TEMPERO', 'COLORIFERO')):
         return '21039029', 'tempero/condimento composto'
+    if 'COLORIIFERO' in name:
+        return '21039029', 'tempero/colorífico'
+    if 'PASTA DE ALHO' in name:
+        return '21039029', 'pasta/tempero de alho'
+    if 'MASSA PARA PASTEL' in name:
+        return '19012000', 'massa para produtos de padaria/pastel'
     if 'VINAGRE' in name:
         return '22090000', 'vinagre'
     if 'SARDINHA' in name:
@@ -167,6 +176,8 @@ def _specific_ncm(name, group, own):
         return '16024100', 'presunto suíno preparado'
     if 'PEITO DE PERU' in name:
         return '16023230', 'preparação de peru'
+    if 'FIAMBRE' in name:
+        return '16024900', 'preparação de carne suína'
     if 'PATE' in name and not own:
         return '16022000', 'preparação/patê de fígado ou carne'
 
@@ -176,6 +187,8 @@ def _specific_ncm(name, group, own):
     if contains_any(name, ('FINI ', 'JUJUBA', 'BALA ', 'BALAS ', 'DROPS', 'HALLS',
                            'FREEGELLS', 'PIRULITO', 'CARAMELO')):
         return '17049020', 'produto de confeitaria sem cacau'
+    if contains_any(name, ('BARRA DE CEREAL',)):
+        return '19042000', 'barra/preparação de cereal'
     if 'WAFER' in name or 'WEFER' in name:
         return '19053200', 'wafer'
     if contains_any(name, ('KITKAT', 'BATON', 'CHOCOLATE', 'TRUFA', 'OVO DE COLHER')) and not own:
@@ -187,13 +200,26 @@ def _specific_ncm(name, group, own):
         return '19053100', 'biscoito doce'
     if contains_any(name, ('RUFFLES', 'BATATA SENSACAO', 'BATATA PALHA')):
         return '20052000', 'batata preparada/conservada'
-    if contains_any(name, ('FANDANGOS', 'PIPPO', 'CHEETOS', 'DORITOS', 'TORCIDA ',
-                           'KRO SABOR', 'CEBOLITOS', 'PIPOCA BOKUS')):
+    if contains_any(name, ('FANDANGOS', 'PIPPO', 'CHEETOS', 'CHEETROS', 'DORITOS',
+                           'TORCIDA ', 'KRO SABOR', 'CEBOLITOS', 'PIPOCA BOKUS',
+                           'KI GALINHA', 'KI CHURRASCO', 'KI QUEIJO')):
         return '19041000', 'salgadinho/produto à base de cereal'
-    if contains_any(name, ('PAÇOCA', 'PACOCA', 'PE DE MULEQUE', 'RAPADURA')):
+    if contains_any(name, ('PAÇOCA', 'PACOCA', 'PACOQUINHA', 'PE DE MULEQUE', 'RAPADURA')):
         return '17049090', 'doce/confeito sem cacau'
-    if contains_any(name, ('PAO DE FORMA', 'PANETONE', 'CHOCOTONE')) and not own:
+    if contains_any(name, ('PAO DE FORMA', 'PAO FORMA', 'PAO BISNAGUINHA', 'PANETONE',
+                           'CHOCOTONE', 'BAURU')) and not own:
         return '19059090', 'produto de padaria industrializado'
+    if contains_any(name, ('BOLO DE ROLO', 'ROCAMBOLE', 'RAIVINHA CASEIRA',
+                           'BOLINHOS AMIDULAR')) and not own:
+        return '19059090', 'produto de padaria/confeitaria industrializado'
+    if name == 'TRELOSO':
+        return '19053100', 'biscoito doce'
+    if contains_any(name, ('ACHOCOLATADO',)):
+        return '18069000', 'preparação contendo cacau'
+    if contains_any(name, ('CHA VERDE',)):
+        return '09021000', 'chá verde'
+    if name.startswith('CHA '):
+        return '12119090', 'erva/planta para infusão'
 
     # Preparações e bebidas prontas.
     if own and 'TAPIOCA' in name:
@@ -207,11 +233,28 @@ def _specific_ncm(name, group, own):
         return '22029900', 'bebida pronta não alcoólica'
     if contains_any(name, ('SUCO', 'REFRESCO', 'TAMPICO', 'KAPO', 'DELVALLE',
                            'DEL VALLE', 'DAFRUTA', 'D FRUTA', 'FRUIT SHOOT',
-                           'MARATA SABOR', 'SUMO ')):
+                           'MARATA SABOR', 'SUMO ', 'BEBIDA DE FRUTA', 'NESCAU',
+                           'TODDYNHO', 'NESQUIK')):
         return '22029900', 'suco/néctar/refresco pronto'
+    if 'AQUACOCO' in name:
+        return '20098990', 'água/suco de coco'
+    if contains_any(name, ('SABAO BARRA', 'SABAO YPE')):
+        return '34011900', 'sabão em barra'
+    if contains_any(name, ('PAPEL SUBLIME', 'YPE PERFUMES')):
+        return ('48181000', 'papel higiênico') if 'PAPEL' in name else (
+            '34025000', 'preparação de limpeza'
+        )
+    if name in {'B1 100 UNI', 'B2 100 UNI', 'H1 100 UNI', 'H2 100 UNI'}:
+        return '39241000', 'recipiente/artigo plástico descartável'
+    if 'CHANTILLY' in name:
+        return '19019090', 'preparação alimentícia à base de leite'
 
     if own and group in {'PADARIA', 'CONFEITARIA'}:
         return '19059090', 'produto de padaria/confeitaria de fabricação própria'
+    if own and group == 'COZINHA':
+        return '21069090', 'preparação alimentícia de fabricação própria'
+    if group == 'PADARIA' and 'PAO ' in name:
+        return '19059090', 'produto de padaria'
     return None
 
 
