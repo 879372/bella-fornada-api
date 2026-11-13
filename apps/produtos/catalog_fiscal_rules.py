@@ -141,7 +141,8 @@ def _specific_ncm(name, group, own):
         return '11062000', 'farinha de mandioca'
     if re.search(r'\bFARINHA\b', name):
         return '11010010', 'farinha de trigo'
-    if contains_any(name, ('POLVILHO', 'GOMA ', 'TAPIOCA BANDEJA', 'TAPIOCA CAICO')) and not own:
+    if contains_any(name, ('POLVILHO', 'GOMA ', 'TAPIOCA BANDEJA', 'TAPIOCA BANDEIJA',
+                           'TAPIOCA CAICO')) and not own:
         return '11081400', 'fécula de mandioca'
     if contains_any(name, ('MILHO PIPOCA', 'MUNGUNZA')) and not own:
         return '10059010', 'milho em grão'
@@ -235,7 +236,7 @@ def _specific_ncm(name, group, own):
         return '19041000', 'pipoca/produto à base de cereal'
     if 'BEIJU' in name:
         return '19030000', 'tapioca/beiju preparado'
-    if 'TAPIOCA BANDEJA' in name:
+    if contains_any(name, ('TAPIOCA BANDEJA', 'TAPIOCA BANDEIJA')):
         return '11081400', 'fécula/goma de mandioca'
     if 'SUSPIRO' in name:
         return '17049090', 'suspiro/doce sem cacau'
