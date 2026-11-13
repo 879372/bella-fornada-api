@@ -45,6 +45,8 @@ class FiscalService:
         if existing:
             if existing.venda_id != venda.pk or existing.tipo != tipo:
                 raise FiscalConflictError("A referência fiscal já está em uso.")
+            if existing.status == DocumentoFiscal.Status.REJEITADA:
+                return self._retry_rejected(existing, venda=venda, usuario=usuario)
             return existing, False
 
         try:
@@ -88,6 +90,66 @@ class FiscalService:
         document = self._apply_response(document, response.data, response.status_code, cancellation=False)
         self._finish_success(attempt, response)
         return document, True
+
+    def _retry_rejected(self, document, *, venda, usuario=None):
+        with transaction.atomic():
+            document = DocumentoFiscal.all_objects.select_for_update().get(pk=document.pk)
+            if document.status != DocumentoFiscal.Status.REJEITADA:
+                return document, False
+
+            config = ConfiguracaoFiscal.objects.select_for_update().get(
+                pk=ConfiguracaoFiscal.atual().pk
+            )
+            builder = VendaFiscalPayloadBuilder(
+                venda,
+                tipo=document.tipo,
+                canal=document.canal,
+                configuracao=config,
+                numero=document.numero,
+                serie=document.serie,
+                referencia=document.referencia,
+            )
+            payload = builder.build()
+            old_status = document.status
+            document.status = DocumentoFiscal.Status.PROCESSANDO
+            document.codigo_status = ""
+            document.mensagem_sefaz = ""
+            if getattr(usuario, "is_authenticated", False):
+                document.solicitada_por = usuario
+            document.save(
+                update_fields=[
+                    "status",
+                    "codigo_status",
+                    "mensagem_sefaz",
+                    "solicitada_por",
+                    "updated_at",
+                ]
+            )
+            EventoFiscal.objects.create(
+                documento=document,
+                tipo=EventoFiscal.Tipo.EMISSAO_SOLICITADA,
+                status_anterior=old_status,
+                status_novo=DocumentoFiscal.Status.PROCESSANDO,
+                descricao="Reenvio de documento rejeitado solicitado à Geranet.",
+            )
+            attempt = TentativaFiscal.objects.create(
+                documento=document,
+                operacao=TentativaFiscal.Operacao.EMISSAO,
+            )
+
+        try:
+            response = self._client_for(config).emitir(payload)
+        except GeranetAPIError as exc:
+            self._finish_error(document, attempt, exc, mark_document_error=True)
+            raise
+        document = self._apply_response(
+            document,
+            response.data,
+            response.status_code,
+            cancellation=False,
+        )
+        self._finish_success(attempt, response)
+        return document, False
 
     def sincronizar(self, document):
         raise FiscalConflictError("A Geranet responde de forma síncrona; o documento já está atualizado.")
