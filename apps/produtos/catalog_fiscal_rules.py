@@ -1,0 +1,287 @@
+import re
+import unicodedata
+
+from .barcodes import gtin_valido
+from .models import Produto
+
+
+RFB_NCM_SOURCE = (
+    'https://www.gov.br/receitafederal/pt-br/assuntos/aduana-e-comercio-exterior/'
+    'classificacao-fiscal-de-mercadorias/download-ncm-nomenclatura-comum-do-mercosul'
+)
+RN_ST_SOURCE = 'Decreto RN 31.825/2022, Anexo 010 (Convênio ICMS 142/2018)'
+SPED_SOURCE = (
+    'https://www.gov.br/sped/pt-br/assuntos/escrituracoes-digitais/'
+    'efd-contribuicoes/tabelas-de-codigos'
+)
+
+
+def normalize(value):
+    text = unicodedata.normalize('NFKD', str(value or ''))
+    text = ''.join(character for character in text if not unicodedata.combining(character))
+    return re.sub(r'[^A-Z0-9]+', ' ', text.upper()).strip()
+
+
+def contains_any(text, terms):
+    return any(term in text for term in terms)
+
+
+def _is_own_production(product, name, group):
+    if 'REVENDA' in name:
+        return False
+    resale_in_padaria = (
+        'PEITO DE PERU', 'PRESUNTO', 'MORT ', 'MORTADELA', 'LOMBINHO',
+        'SALSICHA', 'QUEIJO ', 'MUSSARELA', 'NATA', 'MANTEIGA',
+    )
+    if group == 'PADARIA' and contains_any(name, resale_in_padaria):
+        return False
+    if group in {'PADARIA', 'COZINHA', 'CONFEITARIA'}:
+        barcode = re.sub(r'\D', '', product.codigo_barras or '')
+        internal = barcode.startswith(('2', '777000', '750043', '789800551'))
+        packaged = bool(re.search(r'\b\d+\s?(G|KG|ML|L)\b', name))
+        if packaged and barcode and gtin_valido(barcode) and not internal:
+            return False
+        return True
+    return contains_any(name, ('BUFFET', 'CAFE DA MANHA'))
+
+
+def _beverage_st(name, group):
+    if group not in {'BEBIDA', 'CONVENIENCIA', 'DIVERSOS'}:
+        return None
+    if contains_any(name, ('MONSTER', 'REDBULL', 'RED BULL', 'BALY', 'INFINITY ENERGY')):
+        return ('22029900', '0301300', 'bebida energética sujeita a ST no RN')
+    if 'GATORADE' in name:
+        return ('22029900', '0301500', 'bebida hidroeletrolítica sujeita a ST no RN')
+    if contains_any(name, ('AGUA MINERAL', 'AGUA COM GAS', 'AGUA  INDAIA')):
+        return ('22011000', '0300600', 'água mineral/potável sujeita a ST no RN')
+    soda = (
+        'COCA', 'PEPSI', 'GUARANA', 'FANTA', 'SPRITE', 'SUKITA', 'DORE ',
+        'GRAPETTE', 'GUAPETTE', 'REFRI', 'REFRIGERANTE', 'SCHWEPPES',
+        'CAJUINA', 'H2OH',
+    )
+    if contains_any(name, soda):
+        if 'LATA' in name or re.search(r'\b(250|290|350|473)\s?ML\b', name):
+            cest = '0301002'
+        elif re.search(r'\b(1|1 5|2)\s?L\b', name):
+            cest = '0301001'
+        else:
+            cest = '0301100'
+        return ('22021000', cest, 'refrigerante/água aromatizada sujeita a ST no RN')
+    return None
+
+
+def _specific_ncm(name, group, own):
+    # Higiene, limpeza e descartáveis.
+    rules = (
+        (('CREME DENTAL',), '33061000', 'dentifrício'),
+        (('SABONETE',), '34011190', 'sabonete de toucador'),
+        (('PAPEL HIGIENICO',), '48181000', 'papel higiênico'),
+        (('GUARDANAPO',), '48183000', 'guardanapo de papel'),
+        (('FOSFORO',), '36050000', 'fósforo'),
+        (('ESPONJA DE ACO',), '73231000', 'esponja de aço'),
+        (('ESPONJA', 'BUCHA DE LOUCA'), '39249000', 'esponja/artefato doméstico'),
+        (('AGUA SANITARIA',), '28289011', 'água sanitária à base de hipoclorito'),
+        (('DESINFETANTE',), '38089419', 'desinfetante'),
+        (('DETERGENTE', 'MULTIUSO', 'LIMPA VIDRO', 'LIMPADOR', 'LAVA PISO',
+          'LAVA ROUPA', 'TIXAN', 'CIF PERFUME', 'LIMPA CASA', 'ATOL COCO'),
+         '34025000', 'preparação de limpeza acondicionada para venda a retalho'),
+        (('COPO ', 'COLHER DESCARTAVEL'), '39241000', 'artigo plástico de mesa/cozinha'),
+        (('CANUDO',), '39173290', 'tubo/canudo de plástico'),
+    )
+    for terms, ncm, label in rules:
+        if contains_any(name, terms):
+            return ncm, label
+
+    # Lácteos, ovos e gorduras.
+    if contains_any(name, ('MARGARINA', 'DELINE ', 'CLAYBOM', 'PRIMOR ', 'DELICIA ')):
+        return '15171000', 'margarina'
+    if 'MANTEIGA' in name:
+        return '04051000', 'manteiga'
+    if contains_any(name, ('LEITE CONDENSADO', 'LEITE COND ')):
+        return '04029900', 'leite condensado'
+    if 'CREME DE LEITE' in name or 'CREME CULINARIO' in name:
+        return '04015021', 'creme de leite UHT'
+    if 'LEITE EM PO' in name:
+        return '04022110', 'leite em pó integral'
+    if contains_any(name, ('BEBIDA LACTEA', 'LEITE FERMENTADO', 'COALHADA', 'IOGURTE')):
+        return '04039000', 'leite fermentado/coalhada'
+    if re.search(r'\bLEITE\b', name) and not contains_any(name, ('NINHO', 'CONDENSADO')):
+        return '04012010', 'leite UHT'
+    if contains_any(name, ('REQUEIJAO', 'QUEIJO COALHO', 'QUEIJO MANTEIGA')):
+        return '04061090', 'queijo fresco/requeijão'
+    if 'MUSSARELA' in name:
+        return '04061010', 'queijo muçarela'
+    if 'QUEIJO' in name and not own:
+        return '04069090', 'outro queijo'
+    if re.search(r'\bOVO(S)?\b', name) and not own:
+        return '04072100', 'ovo de galinha com casca'
+
+    # Mercearia seca, conservas e condimentos.
+    if contains_any(name, ('CAFE SOLUVEL', 'NESCAFE')):
+        return '21011110', 'café solúvel'
+    if contains_any(name, ('CAPPUCCINO', 'CAFE COM LEITE')) and not own:
+        return '21011200', 'preparação à base de café'
+    if re.search(r'\bCAFE\b', name) and not own:
+        return '09012100', 'café torrado'
+    if 'ACUCAR' in name:
+        return '17019900', 'açúcar refinado/cristal'
+    if re.search(r'\bSAL\b', name):
+        return '25010020', 'sal de mesa'
+    if contains_any(name, ('FLOCAO', 'FLOKAO', 'FORTE MILHO', 'FLOMIL', 'CUSCUZ GOSTOSIN')):
+        return '11022000', 'farinha/fubá de milho'
+    if contains_any(name, ('MAIZENA', 'CREMOGEMA')):
+        return '11081200', 'amido de milho'
+    if 'FARINHA DE MANDIOCA' in name:
+        return '11062000', 'farinha de mandioca'
+    if re.search(r'\bFARINHA\b', name):
+        return '11010010', 'farinha de trigo'
+    if contains_any(name, ('POLVILHO', 'GOMA ', 'TAPIOCA BANDEJA', 'TAPIOCA CAICO')) and not own:
+        return '11081400', 'fécula de mandioca'
+    if contains_any(name, ('MILHO PIPOCA', 'MUNGUNZA')) and not own:
+        return '10059010', 'milho em grão'
+    if 'MILHO VERDE' in name or 'MILHO FUGINI' in name:
+        return '20058000', 'milho doce preparado/conservado'
+    if 'ERVILHA' in name:
+        return '20054000', 'ervilha preparada/conservada'
+    if contains_any(name, ('OLEO DE SOJA', 'OLEO SOYA', 'OLEO LIZA', 'OLEO ABC',
+                           'OLEO CONCORDIA')):
+        return '15079011', 'óleo de soja refinado'
+    if contains_any(name, ('MIOJO', 'CUP NOODLES')):
+        return '19023000', 'massa alimentícia preparada/instantânea'
+    if contains_any(name, ('MACARRAO', 'MACARAO', 'ESPAGUETE')):
+        return '19021900', 'massa alimentícia não cozida'
+    if contains_any(name, ('MOLHO DE TOMATE', 'MOLHO TOMATE', 'MOLHO PRONTO',
+                           'MOLHO QUERO', 'EXTRATO QUERO', 'KETCHUP', 'KATCHUP')):
+        return '21032010', 'molho/extrato de tomate ou ketchup'
+    if 'MAIONESE' in name:
+        return '21039021', 'maionese'
+    if contains_any(name, ('CALDO ', 'SAZON', 'TEMPERO', 'COLORIFERO')):
+        return '21039029', 'tempero/condimento composto'
+    if 'VINAGRE' in name:
+        return '22090000', 'vinagre'
+    if 'SARDINHA' in name:
+        return '16041310', 'sardinha em conserva'
+    if contains_any(name, ('SALSICHA', 'MORTADELA', 'MORT ', 'LOMBINHO')):
+        return '16010000', 'embutido de carne'
+    if 'PRESUNTO' in name and not own:
+        return '16024100', 'presunto suíno preparado'
+    if 'PEITO DE PERU' in name:
+        return '16023230', 'preparação de peru'
+    if 'PATE' in name and not own:
+        return '16022000', 'preparação/patê de fígado ou carne'
+
+    # Bomboniere, biscoitos, salgadinhos e panificação.
+    if contains_any(name, ('TRIDENT', 'BIGBIG', 'BLONG', 'CHICLETE')):
+        return '17041000', 'goma de mascar'
+    if contains_any(name, ('FINI ', 'JUJUBA', 'BALA ', 'BALAS ', 'DROPS', 'HALLS',
+                           'FREEGELLS', 'PIRULITO', 'CARAMELO')):
+        return '17049020', 'produto de confeitaria sem cacau'
+    if 'WAFER' in name or 'WEFER' in name:
+        return '19053200', 'wafer'
+    if contains_any(name, ('KITKAT', 'BATON', 'CHOCOLATE', 'TRUFA', 'OVO DE COLHER')) and not own:
+        return '18069000', 'chocolate/produto contendo cacau'
+    if contains_any(name, ('CREME CRACKER', 'CREME CRACK ', 'TORRADINHA')) and not own:
+        return '19059020', 'biscoito salgado'
+    if contains_any(name, ('BISCOITO', 'BOLACHA', 'ROSQUINHA', 'SEQUILHO', 'TARECO',
+                           'CASADINHA')) and not own:
+        return '19053100', 'biscoito doce'
+    if contains_any(name, ('RUFFLES', 'BATATA SENSACAO', 'BATATA PALHA')):
+        return '20052000', 'batata preparada/conservada'
+    if contains_any(name, ('FANDANGOS', 'PIPPO', 'CHEETOS', 'DORITOS', 'TORCIDA ',
+                           'KRO SABOR', 'CEBOLITOS', 'PIPOCA BOKUS')):
+        return '19041000', 'salgadinho/produto à base de cereal'
+    if contains_any(name, ('PAÇOCA', 'PACOCA', 'PE DE MULEQUE', 'RAPADURA')):
+        return '17049090', 'doce/confeito sem cacau'
+    if contains_any(name, ('PAO DE FORMA', 'PANETONE', 'CHOCOTONE')) and not own:
+        return '19059090', 'produto de padaria industrializado'
+
+    # Preparações e bebidas prontas.
+    if own and 'TAPIOCA' in name:
+        return '19030000', 'tapioca preparada'
+    if own and contains_any(name, ('SOPA', 'CANJA')):
+        return '21041011', 'preparação para caldo/sopa'
+    if own and contains_any(name, ('JANTA', 'BUFFET', 'SALADA', 'OVO MEXIDO',
+                                   'CAFE DA MANHA', 'CUSCUZ')):
+        return '21069090', 'preparação alimentícia pronta'
+    if own and contains_any(name, ('CAFE ', 'CAPPUCCINO', 'CHOCOLATE QUENTE', 'SUCO')):
+        return '22029900', 'bebida pronta não alcoólica'
+    if contains_any(name, ('SUCO', 'REFRESCO', 'TAMPICO', 'KAPO', 'DELVALLE',
+                           'DEL VALLE', 'DAFRUTA', 'D FRUTA', 'FRUIT SHOOT',
+                           'MARATA SABOR', 'SUMO ')):
+        return '22029900', 'suco/néctar/refresco pronto'
+
+    if own and group in {'PADARIA', 'CONFEITARIA'}:
+        return '19059090', 'produto de padaria/confeitaria de fabricação própria'
+    return None
+
+
+def suggest_fiscal_fields(product):
+    name = normalize(product.nome)
+    group = normalize(product.grupo)
+    own = _is_own_production(product, name, group)
+    st = _beverage_st(name, group) if not own else None
+    specific = _specific_ncm(name, group, own)
+
+    if st:
+        ncm, cest, rationale = st
+        cfop, csosn = '5405', '500'
+        confidence = Produto.ConfiancaFiscal.MEDIA
+    else:
+        cest = ''
+        cfop, csosn = ('5101', '102') if own else ('5102', '102')
+        if specific:
+            ncm, rationale = specific
+            confidence = Produto.ConfiancaFiscal.MEDIA
+        else:
+            fallback = {
+                'PADARIA': ('19059090', 'produto de padaria'),
+                'CONFEITARIA': ('19059090', 'produto de confeitaria'),
+                'COZINHA': ('21069090', 'preparação alimentícia'),
+                'BEBIDA': ('22029900', 'outra bebida não alcoólica'),
+                'BOMBONIERE': ('17049090', 'outro produto de confeitaria'),
+                'LATICINIOS': ('04069090', 'outro produto lácteo/queijo'),
+                'GOMA': ('11081400', 'fécula de mandioca'),
+                'HIGIENE': ('34025000', 'preparação de limpeza'),
+                'CEREAIS': ('21069090', 'outra preparação alimentícia'),
+                'CONVENIENCIA': ('21069090', 'outra preparação alimentícia'),
+                'DIVERSOS': ('21069090', 'outra preparação alimentícia'),
+            }
+            ncm, rationale = fallback.get(group, ('21069090', 'outra preparação alimentícia'))
+            confidence = Produto.ConfiancaFiscal.BAIXA
+
+    barcode = re.sub(r'\D', '', product.codigo_barras or '')
+    gtin = barcode if not own and gtin_valido(barcode) else ''
+    commercial_origin = (
+        Produto.TipoOrigemComercial.FABRICACAO_PROPRIA
+        if own else Produto.TipoOrigemComercial.REVENDA
+    )
+    sources = f'{RFB_NCM_SOURCE}; {SPED_SOURCE}'
+    if st:
+        sources += f'; {RN_ST_SOURCE}'
+    observation = (
+        f'Classificação automatizada por família: {rationale}. '
+        f'{"Validar ficha técnica" if own else "Conferir com XML de compra"}.'
+    )
+    if confidence == Produto.ConfiancaFiscal.BAIXA:
+        observation += ' NCM provisório por ausência de descrição suficiente no cadastro.'
+
+    return {
+        'ncm': ncm,
+        'cest': cest,
+        'cfop': cfop,
+        'cst_icms': csosn,
+        'cst_pis': '49',
+        'cst_cofins': '49',
+        'origem_mercadoria': '0',
+        'codigo_beneficio_fiscal': '',
+        'unidade_tributavel': (product.unidade_medida or 'UN').upper()[:6],
+        'gtin_tributavel': gtin,
+        'fator_conversao_tributavel': '1',
+        'aliquota_icms': '0',
+        'aliquota_pis': '0',
+        'aliquota_cofins': '0',
+        'tipo_origem_comercial': commercial_origin,
+        'fiscal_confianca': confidence,
+        'fiscal_fonte': sources,
+        'fiscal_observacao': observation,
+    }
