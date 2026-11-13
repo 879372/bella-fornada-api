@@ -29,6 +29,8 @@ def contains_any(text, terms):
 def _is_own_production(product, name, group):
     if 'REVENDA' in name:
         return False
+    if group == 'COZINHA' and 'CHANTILLY' in name:
+        return False
     resale_in_padaria = {
         'PEITO DE PERU', 'PRESUNTO', 'PRESUNTO FATIA', 'SALSICHA', 'NATA',
         'MANTEIGA', 'QUEIJO MANTEIGA', 'QUEIJO MUSSARELA', 'QUEIJO COALHO',
@@ -87,7 +89,9 @@ def _specific_ncm(name, group, own):
         if group == 'COZINHA':
             return '21069090', 'preparação alimentícia de fabricação própria'
         if group in {'PADARIA', 'CONFEITARIA'}:
-            if name.startswith(('CAFE ', 'SUCO ', 'ACHOCOLATADO', 'CHOCOLATE QUENTE')):
+            if name == 'SUCO' or name.startswith(
+                ('CAFE ', 'SUCO ', 'ACHOCOLATADO', 'CHOCOLATE QUENTE')
+            ):
                 return '22029900', 'bebida pronta não alcoólica'
             return '19059090', 'produto de padaria/confeitaria de fabricação própria'
 
@@ -115,7 +119,9 @@ def _specific_ncm(name, group, own):
         if contains_any(name, ('BISCOITO', 'BOLACHA', 'ROSQUINHA', 'SEQUILHO', 'TARECO',
                                'CASADINHA')):
             return '19053100', 'biscoito doce'
-        if contains_any(name, ('KITKAT', 'BATON', 'CHOCOLATE', 'TRUFA', 'OVO DE COLHER')):
+        if group in {'BOMBONIERE', 'DIVERSOS'} and contains_any(
+            name, ('KITKAT', 'BATON', 'CHOCOLATE', 'TRUFA', 'OVO DE COLHER')
+        ):
             return '18069000', 'chocolate/produto contendo cacau'
         if contains_any(name, ('CAPPUCCINO', 'CAFE COM LEITE')):
             return '21011200', 'preparação à base de café'
