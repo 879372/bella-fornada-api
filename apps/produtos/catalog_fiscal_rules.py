@@ -60,7 +60,7 @@ def _beverage_st(name, group):
     soda = (
         'COCA', 'PEPSI', 'GUARANA', 'FANTA', 'SPRITE', 'SUKITA', 'DORE ',
         'GRAPETTE', 'GUAPETTE', 'REFRI', 'REFRIGERANTE', 'SCHWEPPES',
-        'CAJUINA', 'H2OH', 'AGUA TONICA',
+        'CAJUINA', 'H2OH', 'AGUA TONICA', 'SODA LIMONADA',
     )
     if contains_any(name, soda):
         if 'LATA' in name or re.search(r'\b(250|290|350|473)\s?ML\b', name):
@@ -88,7 +88,8 @@ def _specific_ncm(name, group, own):
         (('DETERGENTE', 'MULTIUSO', 'LIMPA VIDRO', 'LIMPADOR', 'LAVA PISO',
           'LAVA ROUPA', 'TIXAN', 'CIF PERFUME', 'LIMPA CASA', 'ATOL COCO'),
          '34025000', 'preparação de limpeza acondicionada para venda a retalho'),
-        (('COPO ', 'COLHER DESCARTAVEL'), '39241000', 'artigo plástico de mesa/cozinha'),
+        (('COPO ', 'COLHER DESCARTAVEL', 'COLHER REFEICAO', 'COLHER SOBREMESA'),
+         '39241000', 'artigo plástico de mesa/cozinha'),
         (('CANUDO',), '39173290', 'tubo/canudo de plástico'),
     )
     for terms, ncm, label in rules:
@@ -100,6 +101,8 @@ def _specific_ncm(name, group, own):
         return '15171000', 'margarina'
     if 'MANTEIGA' in name:
         return '04051000', 'manteiga'
+    if name == 'NATA':
+        return '04015021', 'creme de leite/nata'
     if contains_any(name, ('LEITE CONDENSADO', 'LEITE COND ')):
         return '04029900', 'leite condensado'
     if 'CREME DE LEITE' in name or 'CREME CULINARIO' in name:
@@ -146,6 +149,8 @@ def _specific_ncm(name, group, own):
         return '20058000', 'milho doce preparado/conservado'
     if 'ERVILHA' in name:
         return '20054000', 'ervilha preparada/conservada'
+    if 'DUETO FUGINI' in name:
+        return '20059900', 'mistura de vegetais preparada/conservada'
     if contains_any(name, ('OLEO DE SOJA', 'OLEO SOYA', 'OLEO LIZA', 'OLEO ABC',
                            'OLEO CONCORDIA')):
         return '15079011', 'óleo de soja refinado'
@@ -166,6 +171,9 @@ def _specific_ncm(name, group, own):
         return '21039029', 'pasta/tempero de alho'
     if 'MASSA PARA PASTEL' in name:
         return '19012000', 'massa para produtos de padaria/pastel'
+    if contains_any(name, ('REFRESCO FRISCO', 'RFRESCO FRISCO', 'FRISCO MORANGO',
+                           'SUCO EM PO', 'SUCO LIMAO EM PO')):
+        return '21069010', 'preparação em pó para bebida'
     if 'VINAGRE' in name:
         return '22090000', 'vinagre'
     if 'SARDINHA' in name:
@@ -214,6 +222,27 @@ def _specific_ncm(name, group, own):
         return '19059090', 'produto de padaria/confeitaria industrializado'
     if name == 'TRELOSO':
         return '19053100', 'biscoito doce'
+    if contains_any(name, ('DELICIT CRISTAL', 'FOLHEADA DO SERTAO')):
+        return '19053100', 'biscoito doce'
+    if contains_any(name, ('SODA PRETA', 'SORDA PRETA', 'SODA BRANCA', 'MARAGOGI SALGADA',
+                           'PETISCO DE ALHO', 'PETISCO DE CEBOLA',
+                           'PETISCO DE CARNE DE SOL')):
+        return '19059020', 'biscoito/petisco salgado'
+    if contains_any(name, ('PAO DE LO', 'CANUDINHO', 'NEGA MALUCA FATIA',
+                           'MINI EMPADA DOCE')):
+        return '19059090', 'produto de padaria/confeitaria'
+    if 'BOKUS DOCE' in name:
+        return '19041000', 'pipoca/produto à base de cereal'
+    if 'BEIJU' in name:
+        return '19030000', 'tapioca/beiju preparado'
+    if 'TAPIOCA BANDEJA' in name:
+        return '11081400', 'fécula/goma de mandioca'
+    if 'SUSPIRO' in name:
+        return '17049090', 'suspiro/doce sem cacau'
+    if 'ITACOLOMY' in name:
+        return '04061090', 'requeijão/queijo fresco'
+    if 'SORV SUNDAE' in name:
+        return '21050010', 'sorvete'
     if contains_any(name, ('ACHOCOLATADO',)):
         return '18069000', 'preparação contendo cacau'
     if contains_any(name, ('CHA VERDE',)):
@@ -234,8 +263,11 @@ def _specific_ncm(name, group, own):
     if contains_any(name, ('SUCO', 'REFRESCO', 'TAMPICO', 'KAPO', 'DELVALLE',
                            'DEL VALLE', 'DAFRUTA', 'D FRUTA', 'FRUIT SHOOT',
                            'MARATA SABOR', 'SUMO ', 'BEBIDA DE FRUTA', 'NESCAU',
-                           'TODDYNHO', 'NESQUIK')):
+                           'TODDYNHO', 'NESQUIK', 'ICE TEA', 'ITALAKINHO',
+                           'DAMARE KIDS', 'DAMARE CHOCO')):
         return '22029900', 'suco/néctar/refresco pronto'
+    if group == 'BEBIDA' and name.startswith('D '):
+        return '22029900', 'bebida/refresco pronto'
     if 'AQUACOCO' in name:
         return '20098990', 'água/suco de coco'
     if contains_any(name, ('SABAO BARRA', 'SABAO YPE')):
@@ -254,6 +286,8 @@ def _specific_ncm(name, group, own):
     if own and group == 'COZINHA':
         return '21069090', 'preparação alimentícia de fabricação própria'
     if group == 'PADARIA' and 'PAO ' in name:
+        return '19059090', 'produto de padaria'
+    if group == 'DIVERSOS' and name == 'PAO':
         return '19059090', 'produto de padaria'
     return None
 
