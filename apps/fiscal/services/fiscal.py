@@ -1,12 +1,15 @@
 import binascii
 import logging
 import re
+from datetime import timedelta
 
 from django.db import IntegrityError, transaction
+from django.db.models import Max
 from django.utils import timezone
 
 from apps.fiscal.models import (
     ConfiguracaoFiscal,
+    CartaCorrecaoFiscal,
     DocumentoFiscal,
     EventoFiscal,
     InutilizacaoNumeracao,
@@ -40,6 +43,13 @@ class FiscalService:
 
     def _client_for(self, config):
         return self._client or GeranetClient(config)
+
+    @staticmethod
+    def _is_ambiguous_error(error):
+        return getattr(error, "code", "") in {
+            "geranet_timeout",
+            "geranet_indisponivel",
+        } or (getattr(error, "upstream_status", 0) or 0) >= 500
 
     def emitir(self, *, venda, tipo, usuario=None, canal=DocumentoFiscal.Canal.PDV,
                pedido_delivery_id=None, referencia=None):
@@ -165,12 +175,30 @@ class FiscalService:
     def sincronizar(self, document):
         raise FiscalConflictError("A Geranet responde de forma síncrona; o documento já está atualizado.")
 
+    @staticmethod
+    def cancellation_state(document, config=None):
+        if document.status != DocumentoFiscal.Status.AUTORIZADA:
+            return False, None, "Somente documentos autorizados podem ser cancelados."
+        config = config or ConfiguracaoFiscal.atual()
+        if not document.autorizada_em or config.uf.upper() != "RN":
+            return True, None, "A SEFAZ validará o prazo de cancelamento."
+        limit = (
+            document.autorizada_em + timedelta(minutes=30)
+            if document.tipo == DocumentoFiscal.Tipo.NFCE
+            else document.autorizada_em + timedelta(hours=24)
+        )
+        if timezone.now() > limit:
+            label = "30 minutos" if document.tipo == DocumentoFiscal.Tipo.NFCE else "24 horas"
+            return False, limit, f"O prazo normal de cancelamento no RN ({label}) expirou."
+        return True, limit, "Documento dentro do prazo normal de cancelamento."
+
     def cancelar(self, document, justificativa):
         justificativa = sanitize_text(justificativa, max_length=255)
         if len(justificativa) < 15:
             raise FiscalValidationError("A justificativa deve ter no mínimo 15 caracteres.")
-        if document.status != DocumentoFiscal.Status.AUTORIZADA:
-            raise FiscalConflictError("Somente documentos autorizados podem ser cancelados.")
+        can_cancel, _deadline, reason = self.cancellation_state(document)
+        if not can_cancel:
+            raise FiscalConflictError(reason)
         if not document.chave_acesso or not document.protocolo:
             raise FiscalConflictError("O documento não possui chave e protocolo para cancelamento.")
         config = ConfiguracaoFiscal.atual()
@@ -188,7 +216,12 @@ class FiscalService:
         try:
             response = self._client_for(config).cancelar(payload)
         except GeranetAPIError as exc:
-            self._finish_error(document, attempt, exc, mark_document_error=False)
+            self._finish_error(
+                document,
+                attempt,
+                exc,
+                mark_document_error=self._is_ambiguous_error(exc),
+            )
             raise
         if str(response.data.get("situacao", "")).lower() != "sucesso" or str(response.data.get("cstat", "")) != "135":
             error = GeranetAPIError(extract_safe_error(response.data, fallback="A Geranet não confirmou o cancelamento."))
@@ -282,7 +315,11 @@ class FiscalService:
         try:
             response = self._client_for(config).inutilizar_numeracao(payload)
         except GeranetAPIError as exc:
-            record.status = InutilizacaoNumeracao.Status.ERRO
+            record.status = (
+                InutilizacaoNumeracao.Status.INDEFINIDA
+                if self._is_ambiguous_error(exc)
+                else InutilizacaoNumeracao.Status.ERRO
+            )
             record.mensagem_sefaz = sanitize_text(exc.message, max_length=500)
             record.save(update_fields=["status", "mensagem_sefaz", "updated_at"])
             raise
@@ -304,6 +341,93 @@ class FiscalService:
             record.xml_conteudo = self._decode_hex(data.get("xml"), "XML")
         except GeranetAPIError as exc:
             record.status = InutilizacaoNumeracao.Status.ERRO
+            record.mensagem_sefaz = sanitize_text(exc.message, max_length=500)
+            record.save(update_fields=["status", "mensagem_sefaz", "updated_at"])
+            raise
+        record.save()
+        return record
+
+    def carta_correcao(self, document, *, texto_correcao, usuario=None):
+        texto_correcao = sanitize_text(texto_correcao, max_length=1000)
+        if document.tipo != DocumentoFiscal.Tipo.NFE:
+            raise FiscalValidationError("Carta de correção está disponível somente para NF-e.")
+        if document.status != DocumentoFiscal.Status.AUTORIZADA:
+            raise FiscalConflictError("Somente NF-e autorizada pode receber carta de correção.")
+        if len(texto_correcao) < 15:
+            raise FiscalValidationError("O texto da correção deve ter no mínimo 15 caracteres.")
+        if not document.chave_acesso:
+            raise FiscalConflictError("A NF-e não possui chave de acesso para carta de correção.")
+
+        with transaction.atomic():
+            locked_document = DocumentoFiscal.all_objects.select_for_update().get(
+                pk=document.pk
+            )
+            config = ConfiguracaoFiscal.objects.select_for_update().get(
+                pk=ConfiguracaoFiscal.atual().pk
+            )
+            if locked_document.ambiente != config.ambiente:
+                raise FiscalConflictError(
+                    "A NF-e pertence a outro ambiente fiscal. Altere a configuração "
+                    "para o ambiente original antes de emitir a carta de correção."
+                )
+            last_sequence = (
+                CartaCorrecaoFiscal.all_objects.filter(documento=locked_document)
+                .aggregate(value=Max("sequencia"))["value"]
+                or 0
+            )
+            sequence = last_sequence + 1
+            builder = VendaFiscalPayloadBuilder(
+                locked_document.venda,
+                tipo=locked_document.tipo,
+                canal=locked_document.canal,
+                configuracao=config,
+                numero=locked_document.numero,
+                serie=locked_document.serie,
+                referencia=locked_document.referencia,
+            )
+            payload = builder.build_correction(
+                locked_document,
+                sequencia=sequence,
+                texto_correcao=texto_correcao,
+            )
+            record = CartaCorrecaoFiscal.objects.create(
+                documento=locked_document,
+                sequencia=sequence,
+                texto_correcao=texto_correcao,
+                solicitada_por=(
+                    usuario if getattr(usuario, "is_authenticated", False) else None
+                ),
+            )
+
+        try:
+            response = self._client_for(config).carta_correcao(payload)
+        except GeranetAPIError as exc:
+            record.status = (
+                CartaCorrecaoFiscal.Status.INDEFINIDA
+                if self._is_ambiguous_error(exc)
+                else CartaCorrecaoFiscal.Status.ERRO
+            )
+            record.mensagem_sefaz = sanitize_text(exc.message, max_length=500)
+            record.save(update_fields=["status", "mensagem_sefaz", "updated_at"])
+            raise
+
+        data = response.data
+        successful = (
+            str(data.get("situacao", "")).lower() == "sucesso"
+            and str(data.get("cstat", "")) == "135"
+        )
+        record.status = (
+            CartaCorrecaoFiscal.Status.REGISTRADA
+            if successful
+            else CartaCorrecaoFiscal.Status.REJEITADA
+        )
+        record.codigo_status = self._safe(data.get("cstat"), 20)
+        record.mensagem_sefaz = sanitize_text(data.get("mensagem", ""), max_length=500)
+        record.protocolo = self._safe(data.get("protocolo"), 50)
+        try:
+            record.xml_conteudo = self._decode_hex(data.get("xml"), "XML")
+        except GeranetAPIError as exc:
+            record.status = CartaCorrecaoFiscal.Status.ERRO
             record.mensagem_sefaz = sanitize_text(exc.message, max_length=500)
             record.save(update_fields=["status", "mensagem_sefaz", "updated_at"])
             raise
@@ -386,6 +510,26 @@ class FiscalService:
             mensagem=message, finalizada_em=timezone.now(),
         )
         if mark_document_error:
-            DocumentoFiscal.all_objects.filter(pk=document.pk).update(
-                status=DocumentoFiscal.Status.ERRO, mensagem_sefaz=message
+            status = (
+                DocumentoFiscal.Status.INDEFINIDO
+                if FiscalService._is_ambiguous_error(error)
+                else DocumentoFiscal.Status.ERRO
             )
+            with transaction.atomic():
+                locked = DocumentoFiscal.all_objects.select_for_update().get(pk=document.pk)
+                old_status = locked.status
+                locked.status = status
+                locked.mensagem_sefaz = message
+                locked.save(update_fields=["status", "mensagem_sefaz", "updated_at"])
+                if old_status != status:
+                    EventoFiscal.objects.create(
+                        documento=locked,
+                        tipo=EventoFiscal.Tipo.STATUS_ALTERADO,
+                        status_anterior=old_status,
+                        status_novo=status,
+                        descricao=(
+                            "Resultado fiscal indefinido por falha de comunicação."
+                            if status == DocumentoFiscal.Status.INDEFINIDO
+                            else "Falha na integração fiscal."
+                        ),
+                    )

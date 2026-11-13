@@ -18,6 +18,7 @@ class DocumentoFiscal(BaseModel):
         REJEITADA = "REJEITADA", "Rejeitada"
         CANCELADA = "CANCELADA", "Cancelada"
         ERRO = "ERRO", "Erro"
+        INDEFINIDO = "INDEFINIDO", "Resultado indefinido"
 
     class Ambiente(models.TextChoices):
         HOMOLOGACAO = "homologacao", "Homologação"
@@ -145,6 +146,7 @@ class InutilizacaoNumeracao(BaseModel):
         PROCESSANDO = "PROCESSANDO", "Processando"
         INUTILIZADA = "INUTILIZADA", "Inutilizada"
         REJEITADA = "REJEITADA", "Rejeitada"
+        INDEFINIDA = "INDEFINIDA", "Resultado indefinido"
         ERRO = "ERRO", "Erro"
 
     tipo = models.CharField(max_length=4, choices=DocumentoFiscal.Tipo.choices)
@@ -192,6 +194,58 @@ class InutilizacaoNumeracao(BaseModel):
             f"{self.get_tipo_display()} série {self.serie} "
             f"{self.numero_inicial}-{self.numero_final}/{self.ano}"
         )
+
+
+class CartaCorrecaoFiscal(BaseModel):
+    class Status(models.TextChoices):
+        PROCESSANDO = "PROCESSANDO", "Processando"
+        REGISTRADA = "REGISTRADA", "Registrada"
+        REJEITADA = "REJEITADA", "Rejeitada"
+        INDEFINIDA = "INDEFINIDA", "Resultado indefinido"
+        ERRO = "ERRO", "Erro"
+
+    documento = models.ForeignKey(
+        DocumentoFiscal,
+        on_delete=models.PROTECT,
+        related_name="cartas_correcao",
+    )
+    sequencia = models.PositiveSmallIntegerField()
+    texto_correcao = models.CharField(max_length=1000)
+    status = models.CharField(
+        max_length=12,
+        choices=Status.choices,
+        default=Status.PROCESSANDO,
+        db_index=True,
+    )
+    codigo_status = models.CharField(max_length=20, blank=True)
+    mensagem_sefaz = models.CharField(max_length=500, blank=True)
+    protocolo = models.CharField(max_length=50, blank=True)
+    xml_conteudo = models.BinaryField(null=True, blank=True)
+    solicitada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="cartas_correcao_fiscais_solicitadas",
+        null=True,
+        blank=True,
+    )
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        app_label = "fiscal"
+        ordering = ["-created_at"]
+        verbose_name = "Carta de correção fiscal"
+        verbose_name_plural = "Cartas de correção fiscais"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["documento", "sequencia"],
+                name="fiscal_cce_documento_seq_uniq",
+            )
+        ]
+
+    def __str__(self):
+        return f"CC-e {self.documento} #{self.sequencia}"
 
 
 class TentativaFiscal(models.Model):

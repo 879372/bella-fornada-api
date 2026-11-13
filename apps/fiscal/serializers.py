@@ -6,6 +6,7 @@ from apps.vendas.models import Venda
 
 from .crypto import encrypt_secret
 from .models import (
+    CartaCorrecaoFiscal,
     ConfiguracaoFiscal,
     DocumentoFiscal,
     EventoFiscal,
@@ -135,6 +136,9 @@ class DocumentoFiscalSerializer(serializers.ModelSerializer):
     ultima_tentativa = serializers.SerializerMethodField()
     pode_baixar_xml = serializers.SerializerMethodField()
     pode_baixar_pdf = serializers.SerializerMethodField()
+    pode_cancelar = serializers.SerializerMethodField()
+    prazo_cancelamento_em = serializers.SerializerMethodField()
+    motivo_cancelamento = serializers.SerializerMethodField()
 
     class Meta:
         model = DocumentoFiscal
@@ -164,6 +168,9 @@ class DocumentoFiscalSerializer(serializers.ModelSerializer):
             "ultima_sincronizacao_em",
             "pode_baixar_xml",
             "pode_baixar_pdf",
+            "pode_cancelar",
+            "prazo_cancelamento_em",
+            "motivo_cancelamento",
             "ultima_tentativa",
             "created_at",
             "updated_at",
@@ -181,6 +188,25 @@ class DocumentoFiscalSerializer(serializers.ModelSerializer):
 
     def get_pode_baixar_pdf(self, obj):
         return bool(obj.pdf_conteudo)
+
+    def get_pode_cancelar(self, obj):
+        return self._cancellation_state(obj)[0]
+
+    def get_prazo_cancelamento_em(self, obj):
+        return self._cancellation_state(obj)[1]
+
+    def get_motivo_cancelamento(self, obj):
+        return self._cancellation_state(obj)[2]
+
+    def _cancellation_state(self, obj):
+        if not hasattr(self, "_cancellation_states"):
+            self._cancellation_states = {}
+            self._cancellation_config = ConfiguracaoFiscal.atual()
+        if obj.pk not in self._cancellation_states:
+            self._cancellation_states[obj.pk] = FiscalService.cancellation_state(
+                obj, self._cancellation_config
+            )
+        return self._cancellation_states[obj.pk]
 
 
 class EmitirDocumentoFiscalSerializer(serializers.Serializer):
@@ -270,6 +296,60 @@ class SolicitarInutilizacaoNumeracaoSerializer(serializers.Serializer):
                 {"numero_final": "O número final não pode ser menor que o inicial."}
             )
         return attrs
+
+
+class CartaCorrecaoFiscalSerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    pode_baixar_xml = serializers.SerializerMethodField()
+    documento_numero = serializers.CharField(source="documento.numero", read_only=True)
+    documento_serie = serializers.CharField(source="documento.serie", read_only=True)
+
+    class Meta:
+        model = CartaCorrecaoFiscal
+        fields = [
+            "id_externo",
+            "documento",
+            "documento_numero",
+            "documento_serie",
+            "sequencia",
+            "texto_correcao",
+            "status",
+            "status_display",
+            "codigo_status",
+            "mensagem_sefaz",
+            "protocolo",
+            "pode_baixar_xml",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_pode_baixar_xml(self, obj):
+        return bool(obj.xml_conteudo)
+
+
+class SolicitarCartaCorrecaoSerializer(serializers.Serializer):
+    texto_correcao = serializers.CharField(
+        min_length=15,
+        max_length=1000,
+        trim_whitespace=True,
+    )
+
+
+class AlertaFiscalSerializer(serializers.Serializer):
+    nivel = serializers.ChoiceField(choices=["ERRO", "AVISO", "INFO"])
+    codigo = serializers.CharField()
+    titulo = serializers.CharField()
+    descricao = serializers.CharField()
+    quantidade = serializers.IntegerField()
+
+
+class MonitorFiscalSerializer(serializers.Serializer):
+    ambiente = serializers.CharField()
+    atualizado_em = serializers.DateTimeField()
+    certificado = serializers.DictField()
+    resumo = serializers.DictField()
+    contingencia = serializers.DictField()
+    alertas = AlertaFiscalSerializer(many=True)
 
 
 class VendaElegivelFiscalSerializer(serializers.ModelSerializer):

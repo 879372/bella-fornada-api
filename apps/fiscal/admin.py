@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    CartaCorrecaoFiscal,
     ConfiguracaoFiscal,
     DocumentoFiscal,
     EventoFiscal,
@@ -110,4 +111,12 @@ class InutilizacaoNumeracaoAdmin(admin.ModelAdmin):
     )
     list_filter = ("tipo", "ambiente", "status", "ano")
     readonly_fields = [field.name for field in InutilizacaoNumeracao._meta.fields]
+
+
+@admin.register(CartaCorrecaoFiscal)
+class CartaCorrecaoFiscalAdmin(admin.ModelAdmin):
+    list_display = ("documento", "sequencia", "status", "protocolo", "created_at")
+    list_filter = ("status",)
+    search_fields = ("documento__chave_acesso", "protocolo", "texto_correcao")
+    readonly_fields = [field.name for field in CartaCorrecaoFiscal._meta.fields]
 

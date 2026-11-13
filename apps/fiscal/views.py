@@ -15,19 +15,28 @@ from drf_spectacular.utils import extend_schema
 
 from apps.vendas.models import Venda
 
-from .models import ConfiguracaoFiscal, DocumentoFiscal, InutilizacaoNumeracao
+from .models import (
+    CartaCorrecaoFiscal,
+    ConfiguracaoFiscal,
+    DocumentoFiscal,
+    InutilizacaoNumeracao,
+)
 from .serializers import (
+    CartaCorrecaoFiscalSerializer,
     CancelarDocumentoFiscalSerializer,
     ConfiguracaoFiscalSerializer,
     DocumentoFiscalSerializer,
     EmitirDocumentoFiscalSerializer,
     EventoFiscalSerializer,
     InutilizacaoNumeracaoSerializer,
+    MonitorFiscalSerializer,
+    SolicitarCartaCorrecaoSerializer,
     SolicitarInutilizacaoNumeracaoSerializer,
     VendaElegivelFiscalSerializer,
 )
 from .services.errors import FiscalError
 from .services.fiscal import FiscalService
+from .services.monitor import FiscalMonitorService
 from .crypto import decrypt_secret
 
 
@@ -111,6 +120,14 @@ class ValidarConfiguracaoFiscalView(APIView):
             "certificado": certificate.subject.rfc4514_string(),
             "valido_ate": expiration,
         })
+
+
+class MonitorFiscalView(APIView):
+    permission_classes = [IsAuthenticated, IsGestaoFiscal]
+
+    @extend_schema(responses={200: MonitorFiscalSerializer})
+    def get(self, request):
+        return Response(FiscalMonitorService.build())
 
 
 def _fiscal_error_response(exc):
@@ -205,6 +222,33 @@ class DocumentoFiscalViewSet(viewsets.ReadOnlyModelViewSet):
             return _fiscal_error_response(exc)
         return Response(DocumentoFiscalSerializer(document).data)
 
+    @extend_schema(
+        request=SolicitarCartaCorrecaoSerializer,
+        responses={201: CartaCorrecaoFiscalSerializer},
+    )
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="carta-correcao",
+        permission_classes=[IsAuthenticated, IsGestaoFiscal],
+    )
+    def carta_correcao(self, request, pk=None):
+        serializer = SolicitarCartaCorrecaoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        document = self.get_object()
+        try:
+            record = FiscalService().carta_correcao(
+                document,
+                texto_correcao=serializer.validated_data["texto_correcao"],
+                usuario=request.user,
+            )
+        except FiscalError as exc:
+            return _fiscal_error_response(exc)
+        return Response(
+            CartaCorrecaoFiscalSerializer(record).data,
+            status=status.HTTP_201_CREATED,
+        )
+
     @extend_schema(responses={(200, "application/xml"): bytes})
     @action(detail=True, methods=["get"], url_path="xml")
     def xml(self, request, pk=None):
@@ -245,6 +289,7 @@ class DocumentoFiscalViewSet(viewsets.ReadOnlyModelViewSet):
                 DocumentoFiscal.Status.PROCESSANDO,
                 DocumentoFiscal.Status.AUTORIZADA,
                 DocumentoFiscal.Status.CANCELADA,
+                DocumentoFiscal.Status.INDEFINIDO,
             ],
         )
         queryset = (
@@ -306,6 +351,36 @@ class InutilizacaoNumeracaoViewSet(viewsets.ReadOnlyModelViewSet):
         response = HttpResponse(bytes(record.xml_conteudo), content_type="application/xml")
         response["Content-Disposition"] = (
             f'attachment; filename="inutilizacao-{record.id_externo}.xml"'
+        )
+        return response
+
+
+@extend_schema(tags=["Fiscal"])
+class CartaCorrecaoFiscalViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated, IsGestaoFiscal]
+    serializer_class = CartaCorrecaoFiscalSerializer
+    lookup_field = "id_externo"
+    queryset = CartaCorrecaoFiscal.objects.select_related("documento", "solicitada_por")
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        document = self.request.query_params.get("documento")
+        if document:
+            queryset = queryset.filter(documento_id=document)
+        return queryset
+
+    @extend_schema(responses={(200, "application/xml"): bytes})
+    @action(detail=True, methods=["get"], url_path="xml")
+    def xml(self, request, id_externo=None):
+        record = self.get_object()
+        if not record.xml_conteudo:
+            return Response(
+                {"detail": "O XML da carta de correção ainda não está disponível."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        response = HttpResponse(bytes(record.xml_conteudo), content_type="application/xml")
+        response["Content-Disposition"] = (
+            f'attachment; filename="carta-correcao-{record.id_externo}.xml"'
         )
         return response
 

@@ -108,3 +108,6 @@ class GeranetClient:
 
     def inutilizar_numeracao(self, payload):
         return self._post("nfe/inutilizar-numeracao", payload)
+
+    def carta_correcao(self, payload):
+        return self._post("nfe/carta-correcao", payload)

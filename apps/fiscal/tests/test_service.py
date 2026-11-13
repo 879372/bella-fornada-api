@@ -1,17 +1,22 @@
+from decimal import Decimal
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
 
 from apps.fiscal.models import (
+    CartaCorrecaoFiscal,
     ConfiguracaoFiscal,
     DocumentoFiscal,
     InutilizacaoNumeracao,
     TentativaFiscal,
 )
 from apps.fiscal.services.errors import FiscalConflictError
+from apps.fiscal.services.errors import GeranetAPIError
 from apps.fiscal.services.client import GeranetResponse
 from apps.fiscal.services.fiscal import FiscalService
 from apps.vendas.tests.factories import VendaFactory
+from django.utils import timezone
 
 
 class SuccessfulClient:
@@ -47,7 +52,7 @@ def test_reenvia_documento_rejeitado_com_mesmo_numero(monkeypatch, admin_user):
     config = ConfiguracaoFiscal.atual()
     config.proximo_numero_nfce = 8
     config.save()
-    venda = VendaFactory(status="FINALIZADA", total="10.00")
+    venda = VendaFactory(status="FINALIZADA", total=Decimal("10.00"))
     document = DocumentoFiscal.objects.create(
         venda=venda,
         tipo="NFCE",
@@ -190,3 +195,100 @@ def test_nao_inutiliza_numero_autorizado():
             numero_final=3,
             justificativa="Numeração não utilizada no sistema.",
         )
+
+
+@pytest.mark.django_db
+def test_timeout_de_emissao_marca_resultado_indefinido(monkeypatch):
+    venda = VendaFactory(status="FINALIZADA", total=Decimal("10.00"))
+    FakeBuilder.calls = []
+    monkeypatch.setattr("apps.fiscal.services.fiscal.VendaFiscalPayloadBuilder", FakeBuilder)
+    client = SimpleNamespace(
+        emitir=lambda payload: (_ for _ in ()).throw(
+            GeranetAPIError(
+                "Tempo limite excedido.",
+                code="geranet_timeout",
+                http_status=504,
+            )
+        )
+    )
+
+    with pytest.raises(GeranetAPIError):
+        FiscalService(client=client).emitir(venda=venda, tipo="NFCE")
+
+    document = DocumentoFiscal.all_objects.get(venda=venda, tipo="NFCE")
+    assert document.status == DocumentoFiscal.Status.INDEFINIDO
+    assert "Tempo limite" in document.mensagem_sefaz
+
+
+class CorrectionBuilder:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def build_correction(self, document, **kwargs):
+        return {"acao": "cartaCorrecao", **kwargs}
+
+
+@pytest.mark.django_db
+def test_registra_carta_correcao_da_nfe(monkeypatch, admin_user):
+    ConfiguracaoFiscal.atual()
+    venda = VendaFactory(status="FINALIZADA", total="10.00")
+    document = DocumentoFiscal.objects.create(
+        venda=venda,
+        tipo="NFE",
+        status="AUTORIZADA",
+        ambiente="homologacao",
+        referencia=f"venda:{venda.id_externo}:nfe",
+        numero="1",
+        serie="2",
+        chave_acesso="1" * 44,
+    )
+    monkeypatch.setattr(
+        "apps.fiscal.services.fiscal.VendaFiscalPayloadBuilder",
+        CorrectionBuilder,
+    )
+    client = SimpleNamespace(
+        carta_correcao=lambda payload: GeranetResponse(
+            data={
+                "situacao": "sucesso",
+                "cstat": "135",
+                "mensagem": "Evento registrado e vinculado a NF-e",
+                "protocolo": "123456789",
+            },
+            status_code=200,
+        )
+    )
+
+    record = FiscalService(client=client).carta_correcao(
+        document,
+        texto_correcao="Correção da informação complementar da nota.",
+        usuario=admin_user,
+    )
+
+    assert record.status == CartaCorrecaoFiscal.Status.REGISTRADA
+    assert record.sequencia == 1
+    assert record.protocolo == "123456789"
+
+
+@pytest.mark.django_db
+def test_bloqueia_cancelamento_nfce_fora_do_prazo_do_rn():
+    config = ConfiguracaoFiscal.atual()
+    config.uf = "RN"
+    config.save()
+    venda = VendaFactory(status="FINALIZADA", total="10.00")
+    document = DocumentoFiscal.objects.create(
+        venda=venda,
+        tipo="NFCE",
+        status="AUTORIZADA",
+        ambiente="homologacao",
+        referencia=f"venda:{venda.id_externo}:nfce",
+        numero="1",
+        serie="2",
+        chave_acesso="1" * 44,
+        protocolo="123",
+        autorizada_em=timezone.now() - timedelta(minutes=31),
+    )
+
+    can_cancel, _deadline, reason = FiscalService.cancellation_state(document, config)
+
+    assert can_cancel is False
+    assert "30 minutos" in reason

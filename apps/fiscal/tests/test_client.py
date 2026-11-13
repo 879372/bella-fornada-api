@@ -39,3 +39,16 @@ def test_client_uses_official_number_invalidation_route(settings):
     )
 
     assert session.url.endswith("/api/v1/nfe/inutilizar-numeracao")
+
+
+def test_client_uses_official_correction_letter_route(settings):
+    settings.GERANET_TIMEOUT = 30
+    session = Session()
+    config = SimpleNamespace(
+        api_url="https://nfe.geranet.net/api/v1",
+        api_key_encrypted=encrypt_secret("secret"),
+    )
+
+    GeranetClient(config, session=session).carta_correcao({"acao": "cartaCorrecao"})
+
+    assert session.url.endswith("/api/v1/nfe/carta-correcao")

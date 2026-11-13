@@ -89,6 +89,22 @@ class VendaFiscalPayloadBuilder:
             "modelo": "65" if document.tipo == "NFCE" else "55",
             "ufEmitente": self.config.uf,
         }
+
+    def build_correction(self, document, *, sequencia, texto_correcao):
+        return {
+            "acao": "cartaCorrecao",
+            "modeloDocumento": "nfe",
+            "chave": document.chave_acesso,
+            "numeroCorrecao": str(sequencia),
+            "textoCorrecao": texto_correcao,
+            "certificadoDigital": self._certificate_hex(),
+            "senhaCertificadoDigital": decrypt_secret(
+                self.config.certificado_senha_encrypted
+            ),
+            "ambiente": self._environment(),
+            "modelo": "55",
+            "ufEmitente": self.config.uf,
+        }
     def _validate(self):
         if self.venda.status != "FINALIZADA" or not self.venda.itens.exists():
             raise FiscalValidationError("Somente vendas finalizadas e com itens podem emitir nota.")
