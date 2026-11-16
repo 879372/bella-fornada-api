@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from django.db.models import Count, Exists, F, OuterRef, Sum
+from django.db.models import Count, Exists, F, OuterRef, Q, Sum
 from django.http import HttpResponse
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from cryptography.hazmat.primitives.serialization.pkcs12 import load_key_and_certificates
 from django.utils import timezone
 import base64
+import re
 
 from drf_spectacular.utils import extend_schema
 
@@ -164,6 +165,9 @@ class DocumentoFiscalViewSet(viewsets.ReadOnlyModelViewSet):
         venda = self.request.query_params.get("venda")
         if venda:
             queryset = queryset.filter(venda_id=venda)
+        search = re.sub(r'[\s.\-]', '', self.request.query_params.get('q', '').strip())
+        if search:
+            queryset = queryset.filter(Q(numero__icontains=search) | Q(chave_acesso__icontains=search))
         return queryset.order_by("-created_at")
 
     @action(detail=False, methods=["get"], url_path="totalizadores")
