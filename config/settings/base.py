@@ -152,6 +152,7 @@ GERANET_API_URL = config('GERANET_API_URL', default='https://nfe.geranet.net/api
 GERANET_TIMEOUT = config('FISCAL_TIMEOUT_SECONDS', default=30, cast=int)
 FISCAL_ENCRYPTION_KEY = config('FISCAL_ENCRYPTION_KEY', default='')
 FISCAL_AMBIENTE = config('FISCAL_AMBIENTE', default='homologacao')
+RESEND_API_KEY = config('RESEND_API_KEY', default='')
 
 # Delivery: URL pública do frontend, usada nos links de acompanhamento de pedido
 FRONTEND_PUBLIC_URL = config('FRONTEND_PUBLIC_URL', default='http://localhost:5173').rstrip('/')

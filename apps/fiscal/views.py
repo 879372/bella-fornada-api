@@ -30,6 +30,7 @@ from .serializers import (
     ConfiguracaoFiscalSerializer,
     DocumentoFiscalSerializer,
     EmitirDocumentoFiscalSerializer,
+    EnviarXmlContadorSerializer,
     EventoFiscalSerializer,
     InutilizacaoNumeracaoSerializer,
     MonitorFiscalSerializer,
@@ -40,6 +41,7 @@ from .serializers import (
 from .services.errors import FiscalError
 from .services.fiscal import FiscalService
 from .services.monitor import FiscalMonitorService
+from .services.contador import enviar_xmls_contador
 from .crypto import decrypt_secret
 
 
@@ -169,6 +171,17 @@ class DocumentoFiscalViewSet(viewsets.ReadOnlyModelViewSet):
         if search:
             queryset = queryset.filter(Q(numero__icontains=search) | Q(chave_acesso__icontains=search))
         return queryset.order_by("-created_at")
+
+    @extend_schema(request=EnviarXmlContadorSerializer)
+    @action(detail=False, methods=['post'], url_path='enviar-xml-contador', permission_classes=[IsAuthenticated, IsGestaoFiscal])
+    def enviar_xml_contador(self, request):
+        serializer = EnviarXmlContadorSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            result = enviar_xmls_contador(**serializer.validated_data, usuario=request.user)
+        except FiscalError as exc:
+            return _fiscal_error_response(exc)
+        return Response({**result, 'detail': 'Envio do ZIP aceito pelo serviço de e-mail.'})
 
     @action(detail=False, methods=["get"], url_path="totalizadores")
     def totalizadores(self, request):

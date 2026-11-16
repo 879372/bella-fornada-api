@@ -111,6 +111,8 @@ class ConfiguracaoFiscal(BaseModel):
     nome_fantasia = models.CharField(max_length=60, blank=True)
     telefone = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
+    email_contador = models.EmailField(blank=True)
+    email_remetente = models.EmailField(default='fiscal@kaibez.com.br')
     logradouro = models.CharField(max_length=200, blank=True)
     numero = models.CharField(max_length=20, blank=True)
     complemento = models.CharField(max_length=100, blank=True)

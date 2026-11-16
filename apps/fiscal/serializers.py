@@ -1,6 +1,7 @@
 import base64
 
 from rest_framework import serializers
+from django.conf import settings
 
 from apps.vendas.models import Venda
 
@@ -42,6 +43,7 @@ class ConfiguracaoFiscalSerializer(serializers.ModelSerializer):
     certificado_configurado = serializers.SerializerMethodField()
     certificado_senha_configurada = serializers.SerializerMethodField()
     csc_configurado = serializers.SerializerMethodField()
+    resend_configurado = serializers.SerializerMethodField()
 
     class Meta:
         model = ConfiguracaoFiscal
@@ -49,7 +51,8 @@ class ConfiguracaoFiscalSerializer(serializers.ModelSerializer):
             "ambiente", "api_url", "api_key", "api_key_configurada", "certificado",
             "certificado_nome", "certificado_configurado", "certificado_senha",
             "certificado_senha_configurada", "cnpj", "inscricao_estadual",
-            "razao_social", "nome_fantasia", "telefone", "email", "logradouro",
+            "razao_social", "nome_fantasia", "telefone", "email", "email_contador",
+            "email_remetente", "resend_configurado", "logradouro",
             "numero", "complemento", "bairro", "municipio", "codigo_municipio",
             "uf", "cep", "codigo_regime_tributario", "tipo_atividade", "serie_nfce",
             "proximo_numero_nfce", "serie_nfe", "proximo_numero_nfe", "csc",
@@ -61,6 +64,7 @@ class ConfiguracaoFiscalSerializer(serializers.ModelSerializer):
     def get_certificado_configurado(self, obj): return bool(obj.certificado_encrypted)
     def get_certificado_senha_configurada(self, obj): return bool(obj.certificado_senha_encrypted)
     def get_csc_configurado(self, obj): return bool(obj.csc_encrypted)
+    def get_resend_configurado(self, obj): return bool(settings.RESEND_API_KEY)
 
     def to_internal_value(self, data):
         data = data.copy()
@@ -106,6 +110,17 @@ class ConfiguracaoFiscalSerializer(serializers.ModelSerializer):
         if csc:
             instance.csc_encrypted = encrypt_secret(csc)
         return super().update(instance, validated_data)
+
+
+class EnviarXmlContadorSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=False, allow_blank=True)
+    data_inicio = serializers.DateField()
+    data_fim = serializers.DateField()
+
+    def validate(self, attrs):
+        if attrs['data_inicio'] > attrs['data_fim']:
+            raise serializers.ValidationError({'data_fim': 'A data final deve ser igual ou posterior à inicial.'})
+        return attrs
 
 
 class EventoFiscalSerializer(serializers.ModelSerializer):
