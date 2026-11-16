@@ -1,6 +1,6 @@
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Count, F, Q, Sum
 from django.shortcuts import render, get_object_or_404
 from rest_framework import viewsets, filters
 from rest_framework.decorators import action
@@ -201,7 +201,30 @@ class VendaViewSet(viewsets.ModelViewSet):
         if data_fim:
             queryset = queryset.filter(data__date__lte=data_fim)
 
+        search = self.request.query_params.get('q', '').strip()
+        if search:
+            condition = Q(cliente__nome__icontains=search)
+            if search.lstrip('#').isdigit():
+                condition |= Q(pk=int(search.lstrip('#')))
+            queryset = queryset.filter(condition)
+
         return queryset.order_by('-data')
+
+    @action(detail=False, methods=['get'], url_path='totalizadores')
+    def totalizadores(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        def totals(sales):
+            result = sales.aggregate(quantidade=Count('pk'), valor=Sum(F('total') - F('desconto')))
+            result['valor'] = str(result['valor'] or Decimal('0.00'))
+            return result
+
+        return Response({
+            'total': totals(queryset),
+            'finalizadas': totals(queryset.filter(status='FINALIZADA')),
+            'em_aberto': totals(queryset.filter(status='EM_ABERTO')),
+            'canceladas': totals(queryset.filter(status='CANCELADA')),
+        })
 
     def perform_update(self, serializer):
         with transaction.atomic():

@@ -1,4 +1,6 @@
-from django.db.models import Count, Exists, OuterRef
+from decimal import Decimal
+
+from django.db.models import Count, Exists, F, OuterRef, Sum
 from django.http import HttpResponse
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -13,7 +15,7 @@ import base64
 
 from drf_spectacular.utils import extend_schema
 
-from apps.vendas.models import Venda
+from apps.vendas.models import Venda, VendaItem
 
 from .models import (
     CartaCorrecaoFiscal,
@@ -164,6 +166,33 @@ class DocumentoFiscalViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(venda_id=venda)
         return queryset.order_by("-created_at")
 
+    @action(detail=False, methods=["get"], url_path="totalizadores")
+    def totalizadores(self, request):
+        environment = ConfiguracaoFiscal.atual().ambiente
+        documents = self.get_queryset().filter(ambiente=environment)
+        authorized = documents.filter(status=DocumentoFiscal.Status.AUTORIZADA)
+        transmitted = authorized.aggregate(
+            quantidade=Count('pk'),
+            valor=Sum('valor_total'),
+        )
+        # Uma venda pendente é contada uma única vez, mesmo com várias tentativas.
+        resolved = DocumentoFiscal.objects.filter(
+            venda_id=OuterRef('pk'), ambiente=environment,
+            status__in=[DocumentoFiscal.Status.AUTORIZADA, DocumentoFiscal.Status.CANCELADA],
+        )
+        pending = Venda.objects.filter(status='FINALIZADA').annotate(
+            has_resolved=Exists(resolved),
+            has_items=Exists(VendaItem.objects.filter(venda_id=OuterRef('pk'))),
+        ).filter(has_resolved=False, has_items=True)
+        if not _is_gestao_user(request.user):
+            pending = pending.filter(sessao__operador=request.user)
+        pending_totals = pending.aggregate(
+            quantidade=Count('pk'), valor=Sum(F('total') - F('desconto')),
+        )
+        for result in (transmitted, pending_totals):
+            result['valor'] = str(result['valor'] or Decimal('0.00'))
+        return Response({'ambiente': environment, 'transmitidas': transmitted, 'pendentes': pending_totals})
+
     @staticmethod
     def _assert_sale_access(venda, user):
         if not _is_gestao_user(user) and venda.sessao.operador_id != user.id:
@@ -304,6 +333,10 @@ class DocumentoFiscalViewSet(viewsets.ReadOnlyModelViewSet):
         )
         if not _is_gestao_user(request.user):
             queryset = queryset.filter(sessao__operador=request.user)
+
+        venda = request.query_params.get('venda')
+        if venda:
+            queryset = queryset.filter(pk=venda)
 
         page = self.paginate_queryset(queryset)
         serializer = VendaElegivelFiscalSerializer(page or queryset, many=True)
