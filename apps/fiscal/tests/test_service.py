@@ -15,6 +15,7 @@ from apps.fiscal.services.errors import FiscalConflictError
 from apps.fiscal.services.errors import GeranetAPIError
 from apps.fiscal.services.client import GeranetResponse
 from apps.fiscal.services.fiscal import FiscalService
+from apps.fiscal.serializers import DocumentoFiscalSerializer
 from apps.vendas.tests.factories import VendaFactory
 from django.utils import timezone
 
@@ -218,6 +219,109 @@ def test_timeout_de_emissao_marca_resultado_indefinido(monkeypatch):
     document = DocumentoFiscal.all_objects.get(venda=venda, tipo="NFCE")
     assert document.status == DocumentoFiscal.Status.INDEFINIDO
     assert "Tempo limite" in document.mensagem_sefaz
+
+
+@pytest.mark.django_db
+def test_timeout_retornado_no_corpo_nao_e_marcado_como_rejeicao(monkeypatch):
+    venda = VendaFactory(status="FINALIZADA", total=Decimal("10.00"))
+    FakeBuilder.calls = []
+    monkeypatch.setattr("apps.fiscal.services.fiscal.VendaFiscalPayloadBuilder", FakeBuilder)
+    client = SimpleNamespace(
+        emitir=lambda payload: GeranetResponse(
+            data={
+                "situacao": "erro",
+                "mensagem": "Erro Interno: 110 Erro HTTP: 0 Connection timed out",
+            },
+            status_code=200,
+        )
+    )
+
+    document, created = FiscalService(client=client).emitir(
+        venda=venda,
+        tipo="NFCE",
+    )
+
+    assert created is True
+    assert document.status == DocumentoFiscal.Status.INDEFINIDO
+    assert DocumentoFiscalSerializer(document).data["pode_inutilizar"] is False
+
+
+@pytest.mark.django_db
+def test_reprocessa_resultado_indefinido_com_mesmo_numero(monkeypatch, admin_user):
+    venda = VendaFactory(status="FINALIZADA", total=Decimal("10.00"))
+    document = DocumentoFiscal.objects.create(
+        venda=venda,
+        tipo="NFCE",
+        status="INDEFINIDO",
+        ambiente="homologacao",
+        referencia=f"venda:{venda.id_externo}:nfce",
+        numero="21",
+        serie="1",
+        mensagem_sefaz="Connection timed out",
+    )
+    FakeBuilder.calls = []
+    monkeypatch.setattr("apps.fiscal.services.fiscal.VendaFiscalPayloadBuilder", FakeBuilder)
+
+    result, created = FiscalService(client=SuccessfulClient()).emitir(
+        venda=venda,
+        tipo="NFCE",
+        usuario=admin_user,
+    )
+
+    assert created is False
+    assert result.pk == document.pk
+    assert result.status == DocumentoFiscal.Status.AUTORIZADA
+    assert result.numero == "21"
+    assert FakeBuilder.calls[0][1]["numero"] == "21"
+
+
+@pytest.mark.django_db
+def test_inutilizacao_bloqueia_numero_com_resultado_indefinido():
+    config = ConfiguracaoFiscal.atual()
+    config.ambiente = "producao"
+    config.save()
+    venda = VendaFactory(status="FINALIZADA", total="10.00")
+    DocumentoFiscal.objects.create(
+        venda=venda,
+        tipo="NFCE",
+        status="INDEFINIDO",
+        ambiente="producao",
+        referencia=f"venda:{venda.id_externo}:nfce",
+        numero="22",
+        serie="1",
+        mensagem_sefaz="Connection timed out",
+    )
+
+    with pytest.raises(FiscalConflictError, match="ainda não confirmado"):
+        FiscalService(client=SimpleNamespace()).inutilizar_numeracao(
+            tipo="NFCE",
+            serie="1",
+            ano=2026,
+            numero_inicial=22,
+            numero_final=22,
+            justificativa="Numeração não utilizada no sistema.",
+        )
+
+
+@pytest.mark.django_db
+def test_rejeicao_definitiva_pode_ser_preparada_para_inutilizacao():
+    venda = VendaFactory(status="FINALIZADA", total=Decimal("10.00"))
+    document = DocumentoFiscal.objects.create(
+        venda=venda,
+        tipo="NFE",
+        status="REJEITADA",
+        ambiente="homologacao",
+        referencia=f"venda:{venda.id_externo}:nfe",
+        numero="23",
+        serie="1",
+        codigo_status="225",
+        mensagem_sefaz="Falha no schema XML",
+    )
+
+    data = DocumentoFiscalSerializer(document).data
+
+    assert data["pode_inutilizar"] is True
+    assert "rejeitada definitivamente" in data["motivo_inutilizacao"].lower()
 
 
 class CorrectionBuilder:

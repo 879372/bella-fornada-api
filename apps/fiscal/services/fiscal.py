@@ -24,6 +24,14 @@ from .security import extract_safe_error, sanitize_text
 logger = logging.getLogger(__name__)
 REFERENCE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
 MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
+AMBIGUOUS_RESPONSE_MARKERS = (
+    "connection timed out",
+    "erro http: 0",
+    "tempo limite",
+    "timeout",
+    "timed out",
+    "curl error 28",
+)
 
 
 class FiscalService:
@@ -51,6 +59,34 @@ class FiscalService:
             "geranet_indisponivel",
         } or (getattr(error, "upstream_status", 0) or 0) >= 500
 
+    @staticmethod
+    def _is_ambiguous_message(message):
+        normalized = str(message or "").lower()
+        return any(marker in normalized for marker in AMBIGUOUS_RESPONSE_MARKERS)
+
+    @classmethod
+    def _is_ambiguous_response(cls, data, http_status):
+        message = " ".join(
+            str(data.get(field, ""))
+            for field in ("mensagem", "message", "erro", "error")
+        )
+        return int(http_status or 0) >= 500 or cls._is_ambiguous_message(message)
+
+    @classmethod
+    def invalidation_state(cls, document):
+        if not str(document.numero or "").isdigit() or not str(document.serie or "").isdigit():
+            return False, "O documento não possui número e série válidos para inutilização."
+        if document.status == DocumentoFiscal.Status.INDEFINIDO or cls._is_ambiguous_message(
+            document.mensagem_sefaz
+        ):
+            return (
+                False,
+                "O resultado da transmissão ainda é incerto. Reprocesse antes de inutilizar.",
+            )
+        if document.status != DocumentoFiscal.Status.REJEITADA:
+            return False, "Somente numeração com rejeição definitiva pode ser inutilizada."
+        return True, "Numeração rejeitada definitivamente e disponível para inutilização."
+
     def emitir(self, *, venda, tipo, usuario=None, canal=DocumentoFiscal.Canal.PDV,
                pedido_delivery_id=None, referencia=None):
         tipo = str(tipo).upper()
@@ -61,8 +97,11 @@ class FiscalService:
         if existing:
             if existing.venda_id != venda.pk or existing.tipo != tipo:
                 raise FiscalConflictError("A referência fiscal já está em uso.")
-            if existing.status == DocumentoFiscal.Status.REJEITADA:
-                return self._retry_rejected(existing, venda=venda, usuario=usuario)
+            if existing.status in {
+                DocumentoFiscal.Status.REJEITADA,
+                DocumentoFiscal.Status.INDEFINIDO,
+            }:
+                return self._retry_document(existing, venda=venda, usuario=usuario)
             return existing, False
 
         try:
@@ -107,10 +146,13 @@ class FiscalService:
         self._finish_success(attempt, response)
         return document, True
 
-    def _retry_rejected(self, document, *, venda, usuario=None):
+    def _retry_document(self, document, *, venda, usuario=None):
         with transaction.atomic():
             document = DocumentoFiscal.all_objects.select_for_update().get(pk=document.pk)
-            if document.status != DocumentoFiscal.Status.REJEITADA:
+            if document.status not in {
+                DocumentoFiscal.Status.REJEITADA,
+                DocumentoFiscal.Status.INDEFINIDO,
+            }:
                 return document, False
 
             config = ConfiguracaoFiscal.objects.select_for_update().get(
@@ -151,7 +193,11 @@ class FiscalService:
                 tipo=EventoFiscal.Tipo.EMISSAO_SOLICITADA,
                 status_anterior=old_status,
                 status_novo=DocumentoFiscal.Status.PROCESSANDO,
-                descricao="Reenvio de documento rejeitado solicitado à Geranet.",
+                descricao=(
+                    "Reprocessamento de documento com resultado indefinido solicitado à Geranet."
+                    if old_status == DocumentoFiscal.Status.INDEFINIDO
+                    else "Reenvio de documento rejeitado solicitado à Geranet."
+                ),
             )
             attempt = TentativaFiscal.objects.create(
                 documento=document,
@@ -277,6 +323,35 @@ class FiscalService:
                 "A faixa contém número autorizado ou cancelado no sistema: "
                 + ", ".join(str(number) for number in conflicts[:10])
                 + "."
+            )
+
+        unresolved_documents = DocumentoFiscal.all_objects.filter(
+            tipo=tipo,
+            ambiente=config.ambiente,
+            serie=serie,
+            status__in=[
+                DocumentoFiscal.Status.PENDENTE,
+                DocumentoFiscal.Status.PROCESSANDO,
+                DocumentoFiscal.Status.INDEFINIDO,
+                DocumentoFiscal.Status.ERRO,
+                DocumentoFiscal.Status.REJEITADA,
+            ],
+        ).only("numero", "status", "mensagem_sefaz")
+        unresolved_numbers = sorted(
+            int(document.numero)
+            for document in unresolved_documents
+            if str(document.numero).isdigit()
+            and numero_inicial <= int(document.numero) <= numero_final
+            and (
+                document.status != DocumentoFiscal.Status.REJEITADA
+                or self._is_ambiguous_message(document.mensagem_sefaz)
+            )
+        )
+        if unresolved_numbers:
+            raise FiscalConflictError(
+                "A faixa contém número com resultado fiscal ainda não confirmado: "
+                + ", ".join(str(number) for number in unresolved_numbers[:10])
+                + ". Reprocesse o documento antes de inutilizar."
             )
 
         overlapping = InutilizacaoNumeracao.objects.filter(
@@ -459,7 +534,16 @@ class FiscalService:
     def _apply_response(self, document, data, http_status, *, cancellation):
         success_code = "135" if cancellation else "100"
         successful = str(data.get("situacao", "")).lower() == "sucesso" and str(data.get("cstat", "")) == success_code
-        new_status = (DocumentoFiscal.Status.CANCELADA if cancellation else DocumentoFiscal.Status.AUTORIZADA) if successful else DocumentoFiscal.Status.REJEITADA
+        if successful:
+            new_status = (
+                DocumentoFiscal.Status.CANCELADA
+                if cancellation
+                else DocumentoFiscal.Status.AUTORIZADA
+            )
+        elif self._is_ambiguous_response(data, http_status):
+            new_status = DocumentoFiscal.Status.INDEFINIDO
+        else:
+            new_status = DocumentoFiscal.Status.REJEITADA
         xml, pdf = self._decode_hex(data.get("xml"), "XML"), self._decode_hex(data.get("pdf"), "PDF")
         now = timezone.now()
         with transaction.atomic():

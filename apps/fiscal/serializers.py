@@ -137,8 +137,10 @@ class DocumentoFiscalSerializer(serializers.ModelSerializer):
     pode_baixar_xml = serializers.SerializerMethodField()
     pode_baixar_pdf = serializers.SerializerMethodField()
     pode_cancelar = serializers.SerializerMethodField()
+    pode_inutilizar = serializers.SerializerMethodField()
     prazo_cancelamento_em = serializers.SerializerMethodField()
     motivo_cancelamento = serializers.SerializerMethodField()
+    motivo_inutilizacao = serializers.SerializerMethodField()
 
     class Meta:
         model = DocumentoFiscal
@@ -169,8 +171,10 @@ class DocumentoFiscalSerializer(serializers.ModelSerializer):
             "pode_baixar_xml",
             "pode_baixar_pdf",
             "pode_cancelar",
+            "pode_inutilizar",
             "prazo_cancelamento_em",
             "motivo_cancelamento",
+            "motivo_inutilizacao",
             "ultima_tentativa",
             "created_at",
             "updated_at",
@@ -192,11 +196,17 @@ class DocumentoFiscalSerializer(serializers.ModelSerializer):
     def get_pode_cancelar(self, obj):
         return self._cancellation_state(obj)[0]
 
+    def get_pode_inutilizar(self, obj):
+        return FiscalService.invalidation_state(obj)[0]
+
     def get_prazo_cancelamento_em(self, obj):
         return self._cancellation_state(obj)[1]
 
     def get_motivo_cancelamento(self, obj):
         return self._cancellation_state(obj)[2]
+
+    def get_motivo_inutilizacao(self, obj):
+        return FiscalService.invalidation_state(obj)[1]
 
     def _cancellation_state(self, obj):
         if not hasattr(self, "_cancellation_states"):
