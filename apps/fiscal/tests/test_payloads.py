@@ -122,8 +122,26 @@ def test_payment_payload_uses_current_geranet_field_names():
             "tipo": "17",
             "valor": Decimal("10.00"),
             "indicadorPagamento": "0",
+            "tipoIntegracao": "2",
         }],
     }
+
+
+@pytest.mark.parametrize(
+    ("forma", "codigo"),
+    [("CARTAO_CREDITO", "03"), ("CARTAO_DEBITO", "04")],
+)
+def test_card_payment_payload_marks_external_terminal_as_not_integrated(forma, codigo):
+    result = builder(item())
+    result.venda.pagamentos = SimpleNamespace(all=lambda: [
+        SimpleNamespace(forma=forma, valor=Decimal("10.00")),
+    ])
+    result.venda.total_liquido = Decimal("10.00")
+
+    payment = result._payments()["detalhamento"][0]
+
+    assert payment["tipo"] == codigo
+    assert payment["tipoIntegracao"] == "2"
 
 
 def test_anonymous_nfce_marks_operation_as_final_consumer():

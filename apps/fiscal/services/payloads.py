@@ -238,11 +238,17 @@ class VendaFiscalPayloadBuilder:
             raise FiscalValidationError("A venda não possui forma de pagamento fiscal.")
         details = []
         for payment in payments:
-            details.append({
+            detail = {
                 "tipo": self.PAYMENT_CODES.get(payment.forma, "99"),
                 "valor": _money(payment.valor),
                 "indicadorPagamento": "1" if payment.forma == "FIADO" else "0",
-            })
+            }
+            # O PDV registra cartão e Pix em terminais externos, sem TEF
+            # integrado ao ERP. A SEFAZ exige o grupo de pagamento eletrônico;
+            # na Geranet, tipoIntegracao=2 gera esse grupo como não integrado.
+            if payment.forma in {"CARTAO_CREDITO", "CARTAO_DEBITO", "PIX"}:
+                detail["tipoIntegracao"] = "2"
+            details.append(detail)
         paid = sum((item["valor"] for item in details), Decimal("0"))
         return {"troco": max(paid - _money(self.venda.total_liquido), Decimal("0")), "detalhamento": details}
 
