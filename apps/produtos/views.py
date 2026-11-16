@@ -1,4 +1,5 @@
 import csv
+import logging
 
 from django.db.models import Q
 from django.http import HttpResponse
@@ -7,17 +8,21 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.usuarios.permissions import IsAdminOrManager
+from apps.usuarios.permissions import CanChangePdvPrice, IsAdminOrManager
 
 from .barcodes import interpretar_etiqueta_balanca
 from .models import ConfiguracaoBalanca, Produto, Grupo
 from .serializers import (
+    AtualizarPrecoPdvSerializer,
     ConfiguracaoBalancaSerializer,
     GrupoSerializer,
     ProdutoReadSerializer,
     ProdutoSerializer,
     ProdutoSimplificadoSerializer,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class ConfiguracaoBalancaView(APIView):
@@ -75,7 +80,9 @@ class ProdutoViewSet(viewsets.ModelViewSet):
     ordering_fields = ['nome', 'preco_venda', 'grupo']
 
     def get_permissions(self):
-        if self.action in {'create', 'update', 'partial_update', 'destroy'}:
+        if self.action == 'preco_pdv':
+            permission_classes = (permissions.IsAuthenticated, CanChangePdvPrice)
+        elif self.action in {'create', 'update', 'partial_update', 'destroy'}:
             permission_classes = (permissions.IsAuthenticated, IsAdminOrManager)
         else:
             permission_classes = (permissions.IsAuthenticated,)
@@ -109,6 +116,33 @@ class ProdutoViewSet(viewsets.ModelViewSet):
         produtos = Produto.objects.filter(ativo=True).filter(qs)[:20]
         serializer = ProdutoSimplificadoSerializer(produtos, many=True)
         return Response(serializer.data)
+
+    @action(
+        detail=True,
+        methods=['patch'],
+        url_path='preco-pdv',
+        permission_classes=[permissions.IsAuthenticated, CanChangePdvPrice],
+    )
+    def preco_pdv(self, request, pk=None):
+        """Altera exclusivamente o preço de venda a partir do PDV."""
+        produto = self.get_object()
+        serializer = AtualizarPrecoPdvSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        preco_anterior = produto.preco_venda
+        produto.preco_venda = serializer.validated_data['preco_venda']
+        produto.save(update_fields=['preco_venda', 'updated_at'])
+
+        logger.info(
+            'Preço de produto alterado no PDV',
+            extra={
+                'produto_id': str(produto.pk),
+                'usuario_id': request.user.pk,
+                'preco_anterior': str(preco_anterior),
+                'preco_novo': str(produto.preco_venda),
+            },
+        )
+        return Response(ProdutoSimplificadoSerializer(produto).data)
 
 
     @action(detail=False, methods=['get'], url_path='por-codigo')

@@ -22,6 +22,17 @@ class IsAdminOrManager(BasePermission):
         }
 
 
+class CanChangePdvPrice(BasePermission):
+    message = 'Apenas administradores, gerentes e caixas podem alterar o preço no PDV.'
+
+    def has_permission(self, request, view):
+        return papel_usuario(request.user) in {
+            PerfilUsuario.Papel.ADMIN,
+            PerfilUsuario.Papel.GERENTE,
+            PerfilUsuario.Papel.CAIXA,
+        }
+
+
 class HasOperationalRole(BasePermission):
     allowed_roles = set()
 

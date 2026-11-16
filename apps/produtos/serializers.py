@@ -245,3 +245,11 @@ class ProdutoSimplificadoSerializer(serializers.ModelSerializer):
             'id', 'codigo_legado', 'nome', 'codigo_barras', 'preco_venda',
             'unidade_medida', 'grupo', 'disponivel_delivery',
         ]
+
+
+class AtualizarPrecoPdvSerializer(serializers.Serializer):
+    preco_venda = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.01'),
+    )
