@@ -125,14 +125,22 @@ class SessaoCaixaViewSet(viewsets.ModelViewSet):
             _assert_session_owner(sessao, request.user)
             if sessao.status == 'FECHADA':
                 return Response({'erro': 'Este caixa já está fechado.'}, status=400)
-            if Venda.objects.filter(sessao=sessao, status='EM_ABERTO').exists():
-                return Response({'erro': 'Não é possível fechar o caixa com vendas em aberto. Finalize ou cancele as vendas pendentes.'}, status=400)
+            # A venda aberta ainda não baixou estoque nem gerou recebíveis.
+            # Cancelamento e fechamento pertencem à mesma transação: falhou,
+            # nenhuma venda é descartada nem o caixa é encerrado parcialmente.
+            agora = timezone.now()
+            vendas_canceladas = Venda.objects.filter(sessao=sessao, status='EM_ABERTO').update(
+                status='CANCELADA',
+                motivo_cancelamento='Cancelamento automático no fechamento do caixa.',
+                cancelada_por=request.user, cancelada_em=agora, updated_at=agora,
+            )
 
             vendas = Venda.objects.filter(sessao=sessao, status='FINALIZADA')
             pagamentos = VendaPagamento.objects.filter(venda__in=vendas)
             resumo = {
                 'total_vendas': vendas.aggregate(total=Sum(F('total') - F('desconto')))['total'] or Decimal('0'),
                 'quantidade_vendas': vendas.count(),
+                'quantidade_vendas_canceladas': vendas_canceladas,
                 'por_forma': {},
             }
             for forma, _label in VendaPagamento.FORMA_CHOICES:
