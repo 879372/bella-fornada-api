@@ -148,9 +148,9 @@ class SessaoCaixaSerializer(serializers.ModelSerializer):
         return value
 
     def get_total_vendas(self, obj):
-        from django.db.models import Sum
+        from django.db.models import F, Sum
         from .models import Venda
-        total = Venda.objects.filter(sessao=obj, status='FINALIZADA').aggregate(t=Sum('total'))['t'] or 0
+        total = Venda.objects.filter(sessao=obj, status='FINALIZADA').aggregate(t=Sum(F('total') - F('desconto')))['t'] or 0
         return str(total)
 
     def get_total_sangrias(self, obj):

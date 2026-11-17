@@ -1,6 +1,6 @@
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.db import transaction
-from django.db.models import Count, F, Q, Sum
+from django.db.models import Count, F, Q, Sum, Prefetch
 from django.shortcuts import render, get_object_or_404
 from rest_framework import viewsets, filters
 from rest_framework.decorators import action
@@ -53,6 +53,35 @@ class SessaoCaixaViewSet(viewsets.ModelViewSet):
 
         return queryset.order_by('-data_abertura')
 
+    @action(detail=False, methods=['get'], url_path='gestao')
+    def gestao(self, request):
+        from .services.fechamentos import resumo_fechamento
+        queryset = self.get_queryset()
+        status = request.query_params.get('status')
+        if status:
+            queryset = queryset.filter(status=status)
+        search = request.query_params.get('q', '').strip()
+        if search:
+            condition = Q(operador__username__icontains=search)
+            if search.lstrip('#').isdigit():
+                condition |= Q(pk=int(search.lstrip('#')))
+            queryset = queryset.filter(condition)
+        queryset = queryset.prefetch_related(
+            Prefetch('venda_set', queryset=Venda.objects.prefetch_related('pagamentos')),
+            'operacoes',
+        )
+        page = self.paginate_queryset(queryset)
+        items = page if page is not None else queryset
+        data = [{
+            'id': sessao.pk, 'operador': sessao.operador_id, 'operador_nome': sessao.operador.username,
+            'status': sessao.status, 'aberta_em': sessao.data_abertura,
+            'fechada_em': sessao.data_fechamento, 'fundo_inicial': str(sessao.fundo_inicial),
+            'valor_contado': str(sessao.valor_contado) if sessao.valor_contado is not None else None,
+            'diferenca_caixa': str(sessao.diferenca_caixa) if sessao.diferenca_caixa is not None else None,
+            'observacoes': sessao.observacoes, 'resumo': resumo_fechamento(sessao),
+        } for sessao in items]
+        return self.get_paginated_response(data) if page is not None else Response(data)
+
     def perform_create(self, serializer):
         serializer.save(operador=self.request.user)
 
@@ -102,7 +131,7 @@ class SessaoCaixaViewSet(viewsets.ModelViewSet):
             vendas = Venda.objects.filter(sessao=sessao, status='FINALIZADA')
             pagamentos = VendaPagamento.objects.filter(venda__in=vendas)
             resumo = {
-                'total_vendas': vendas.aggregate(total=Sum('total'))['total'] or Decimal('0'),
+                'total_vendas': vendas.aggregate(total=Sum(F('total') - F('desconto')))['total'] or Decimal('0'),
                 'quantidade_vendas': vendas.count(),
                 'por_forma': {},
             }
