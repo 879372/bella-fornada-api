@@ -345,10 +345,21 @@ def _specific_ncm(name, group, own):
     return None
 
 
-def suggest_fiscal_fields(product):
+def suggest_fiscal_fields(product, tipo=None):
+    """Sugere a classificação fiscal (Simples Nacional, RN).
+
+    `tipo` é o tipo escolhido no cadastro; sem ele, deduz pela família do produto.
+    """
     name = normalize(product.nome)
     group = normalize(product.grupo)
-    own = _is_own_production(product, name, group)
+    Tipo = Produto.TipoOrigemComercial
+    if tipo == Tipo.FABRICACAO_PROPRIA:
+        own = True
+    elif tipo in {Tipo.REVENDA, Tipo.INSUMO, Tipo.MISTO}:
+        own = False
+    else:
+        tipo = None
+        own = _is_own_production(product, name, group)
     st = _beverage_st(name, group) if not own else None
     specific = _specific_ncm(name, group, own)
 
@@ -381,10 +392,7 @@ def suggest_fiscal_fields(product):
 
     barcode = re.sub(r'\D', '', product.codigo_barras or '')
     gtin = barcode if not own and gtin_valido(barcode) else ''
-    commercial_origin = (
-        Produto.TipoOrigemComercial.FABRICACAO_PROPRIA
-        if own else Produto.TipoOrigemComercial.REVENDA
-    )
+    commercial_origin = tipo or (Tipo.FABRICACAO_PROPRIA if own else Tipo.REVENDA)
     sources = f'{RFB_NCM_SOURCE}; {SPED_SOURCE}'
     if st:
         sources += f'; {RN_ST_SOURCE}'

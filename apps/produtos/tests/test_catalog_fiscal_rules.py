@@ -52,3 +52,21 @@ def test_unknown_resale_is_marked_low_confidence():
     assert fields['tipo_origem_comercial'] == Produto.TipoOrigemComercial.REVENDA
     assert fields['fiscal_confianca'] == Produto.ConfiancaFiscal.BAIXA
     assert 'provisório' in fields['fiscal_observacao']
+
+
+def test_tipo_escolhido_no_cadastro_prevalece():
+    revenda = suggest_fiscal_fields(Produto(nome='BOLO DE CHOCOLATE', grupo='CONFEITARIA'), 'REVENDA')
+    assert (revenda['cfop'], revenda['tipo_origem_comercial']) == ('5102', 'REVENDA')
+    propria = suggest_fiscal_fields(Produto(nome='BOLO DE CHOCOLATE', grupo='CONFEITARIA'), 'FABRICACAO_PROPRIA')
+    assert (propria['ncm'], propria['cfop'], propria['cst_icms']) == ('19059090', '5101', '102')
+
+
+@pytest.mark.django_db
+def test_endpoint_sugestao_fiscal(auth_client):
+    resposta = auth_client.get('/api/produtos/sugestao-fiscal/', {
+        'nome': 'Coca Cola Lata 350ml', 'grupo': 'BEBIDA', 'tipo_origem_comercial': 'REVENDA',
+    })
+    assert resposta.status_code == 200
+    campos = resposta.data['campos']
+    assert (campos['ncm'], campos['cest'], campos['cfop'], campos['cst_icms']) == ('22021000', '0301002', '5405', '500')
+    assert resposta.data['alerta'] == ''

@@ -97,6 +97,27 @@ class ProdutoViewSet(viewsets.ModelViewSet):
             return ProdutoReadSerializer
         return ProdutoSerializer
 
+    @action(detail=False, methods=['get'], url_path='sugestao-fiscal')
+    def sugestao_fiscal(self, request):
+        """Pré-preenche a classificação fiscal do cadastro conforme o tipo e a família do produto."""
+        from apps.fiscal.models import ConfiguracaoFiscal
+        from .catalog_fiscal_rules import suggest_fiscal_fields
+
+        params = request.query_params
+        produto = Produto(
+            nome=params.get('nome', '').strip(),
+            grupo=params.get('grupo', '').strip(),
+            codigo_barras=params.get('codigo_barras', '').strip(),
+            unidade_medida=params.get('unidade_medida', '').strip() or 'UN',
+        )
+        campos = suggest_fiscal_fields(produto, params.get('tipo_origem_comercial') or None)
+        regime = ConfiguracaoFiscal.atual().codigo_regime_tributario
+        alerta = '' if regime in {'1', '4'} else (
+            'A empresa não está no Simples Nacional: a sugestão usa CSOSN e precisa ser '
+            'convertida para CST pelo contador.'
+        )
+        return Response({'campos': campos, 'alerta': alerta})
+
     @action(detail=False, methods=['get'], url_path='busca-pdv')
     def busca_pdv(self, request):
         """Busca rápida para o PDV por nome ou código de barras"""
