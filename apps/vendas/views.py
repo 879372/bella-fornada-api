@@ -8,6 +8,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
 from .models import SessaoCaixa, Venda, VendaItem, VendaPagamento, OperacaoCaixa
+from .services.fechamentos import dados_sessao, eh_gestao
 from .serializers import (
     SessaoCaixaSerializer,
     VendaSerializer,
@@ -55,7 +56,6 @@ class SessaoCaixaViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='gestao')
     def gestao(self, request):
-        from .services.fechamentos import resumo_fechamento
         queryset = self.get_queryset()
         status = request.query_params.get('status')
         if status:
@@ -72,14 +72,8 @@ class SessaoCaixaViewSet(viewsets.ModelViewSet):
         )
         page = self.paginate_queryset(queryset)
         items = page if page is not None else queryset
-        data = [{
-            'id': sessao.pk, 'operador': sessao.operador_id, 'operador_nome': sessao.operador.username,
-            'status': sessao.status, 'aberta_em': sessao.data_abertura,
-            'fechada_em': sessao.data_fechamento, 'fundo_inicial': str(sessao.fundo_inicial),
-            'valor_contado': str(sessao.valor_contado) if sessao.valor_contado is not None else None,
-            'diferenca_caixa': str(sessao.diferenca_caixa) if sessao.diferenca_caixa is not None else None,
-            'observacoes': sessao.observacoes, 'resumo': resumo_fechamento(sessao),
-        } for sessao in items]
+        gestao = eh_gestao(request.user)
+        data = [dados_sessao(sessao, gestao and sessao.status == 'FECHADA') for sessao in items]
         return self.get_paginated_response(data) if page is not None else Response(data)
 
     def perform_create(self, serializer):
@@ -163,8 +157,26 @@ class SessaoCaixaViewSet(viewsets.ModelViewSet):
 
         return Response({
             'sessao': SessaoCaixaSerializer(sessao).data,
-            'resumo': resumo
+            'resumo': resumo,
+            'relatorio': self._relatorio(sessao.pk),
         })
+
+    def _relatorio(self, pk):
+        sessao = SessaoCaixa.objects.select_related('operador').prefetch_related(
+            Prefetch('venda_set', queryset=Venda.objects.prefetch_related('pagamentos')),
+            'operacoes',
+        ).get(pk=pk)
+        return dados_sessao(sessao, True)
+
+    @action(detail=True, methods=['get'], url_path='relatorio')
+    def relatorio(self, request, pk=None):
+        """Relatório para a impressão do fechamento (inclui o dinheiro esperado)."""
+        sessao = self.get_object()
+        if sessao.status != 'FECHADA':
+            return Response({'erro': 'O relatório só fica disponível depois do fechamento do caixa.'}, status=400)
+        if sessao.operador_id != request.user.id and not eh_gestao(request.user):
+            raise PermissionDenied('Somente o operador do caixa ou a gerência podem imprimir este fechamento.')
+        return Response(self._relatorio(sessao.pk))
 
     @action(detail=True, methods=['post'], url_path='sangria')
     def sangria(self, request, pk=None):

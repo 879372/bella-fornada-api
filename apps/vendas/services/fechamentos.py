@@ -38,3 +38,26 @@ def resumo_fechamento(sessao):
         'operacoes': [{'id': o.pk, 'tipo': o.tipo, 'valor': str(o.valor),
                        'motivo': o.motivo, 'created_at': o.created_at.isoformat()} for o in operacoes],
     }
+
+
+def eh_gestao(user):
+    if user.is_staff or user.is_superuser:
+        return True
+    perfil = getattr(user, 'perfil_bella_fornada', None)
+    return bool(perfil and perfil.papel in {'ADMIN', 'GERENTE'})
+
+
+def dados_sessao(sessao, mostrar_conferencia):
+    """Fechamento cego: o dinheiro esperado e a diferença só aparecem depois de fechado."""
+    resumo = resumo_fechamento(sessao)
+    if not mostrar_conferencia:
+        resumo['saldo_esperado'] = None
+    return {
+        'id': sessao.pk, 'operador': sessao.operador_id, 'operador_nome': sessao.operador.username,
+        'status': sessao.status, 'aberta_em': sessao.data_abertura,
+        'fechada_em': sessao.data_fechamento, 'fundo_inicial': str(sessao.fundo_inicial),
+        'valor_contado': str(sessao.valor_contado) if sessao.valor_contado is not None else None,
+        'diferenca_caixa': (str(sessao.diferenca_caixa)
+                            if mostrar_conferencia and sessao.diferenca_caixa is not None else None),
+        'observacoes': sessao.observacoes, 'resumo': resumo,
+    }

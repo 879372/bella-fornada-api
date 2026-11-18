@@ -121,7 +121,6 @@ class SessaoCaixaSerializer(serializers.ModelSerializer):
     total_vendas = serializers.SerializerMethodField()
     total_sangrias = serializers.SerializerMethodField()
     total_suprimentos = serializers.SerializerMethodField()
-    saldo_final_calculado = serializers.SerializerMethodField()
 
     class Meta:
         model = SessaoCaixa
@@ -131,13 +130,12 @@ class SessaoCaixaSerializer(serializers.ModelSerializer):
             'diferenca_caixa', 'created_at',
             # campos calculados / aliases:
             'aberta_em', 'fechada_em',
-            'total_vendas', 'total_sangrias', 'total_suprimentos', 'saldo_final_calculado',
+            'total_vendas', 'total_sangrias', 'total_suprimentos',
         ]
         read_only_fields = [
             'id', 'operador', 'data_abertura', 'data_fechamento', 'status',
             'valor_contado', 'diferenca_caixa', 'created_at', 'aberta_em',
             'fechada_em', 'total_vendas', 'total_sangrias', 'total_suprimentos',
-            'saldo_final_calculado',
         ]
 
     def validate_fundo_inicial(self, value):
@@ -164,18 +162,6 @@ class SessaoCaixaSerializer(serializers.ModelSerializer):
         from .models import OperacaoCaixa
         total = OperacaoCaixa.objects.filter(sessao=obj, tipo='SUPRIMENTO').aggregate(t=Sum('valor'))['t'] or 0
         return str(total)
-
-    def get_saldo_final_calculado(self, obj):
-        from django.db.models import Sum
-        from .models import OperacaoCaixa
-        total_dinheiro = VendaPagamento.objects.filter(
-            venda__sessao=obj, venda__status='FINALIZADA', forma='DINHEIRO'
-        ).aggregate(t=Sum('valor'))['t'] or 0
-        total_sangrias = OperacaoCaixa.objects.filter(sessao=obj, tipo='SANGRIA').aggregate(t=Sum('valor'))['t'] or 0
-        total_suprimentos = OperacaoCaixa.objects.filter(sessao=obj, tipo='SUPRIMENTO').aggregate(t=Sum('valor'))['t'] or 0
-        fundo = obj.fundo_inicial or 0
-        saldo = fundo + total_dinheiro + total_suprimentos - total_sangrias
-        return str(saldo)
 
 
 # Serializers apenas para documentação OpenAPI (Inputs de Actions)

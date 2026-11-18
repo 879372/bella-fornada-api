@@ -32,7 +32,8 @@ def test_gestao_concilia_liquido_pagamentos_e_movimentacoes(auth_client):
     assert resumo['quantidade_orcamentos'] == 1
     assert Decimal(resumo['total_liquido']) == 90
     assert Decimal(resumo['descontos']) == 10
-    assert Decimal(resumo['saldo_esperado']) == 120
+    # Fechamento cego: com o caixa aberto, ninguém vê o dinheiro esperado.
+    assert resumo['saldo_esperado'] is None
     assert resumo['por_forma']['DINHEIRO']['quantidade'] == 1
     assert Decimal(resumo['por_forma']['DINHEIRO']['valor']) == 30
     assert Decimal(resumo['por_forma']['PIX']['valor']) == 60
@@ -62,3 +63,37 @@ def test_gestao_filtra_status_operador_e_periodo(auth_client):
 
 def test_gestao_exige_autenticacao(api_client):
     assert api_client.get('/api/sessoes-caixa/gestao/').status_code in (401, 403)
+
+
+def test_gestao_mostra_esperado_para_gerencia_so_depois_de_fechado(auth_client):
+    SessaoCaixaFactory(status='FECHADA', fundo_inicial=50, valor_contado=40, diferenca_caixa=-10)
+    item = auth_client.get('/api/sessoes-caixa/gestao/').data['results'][0]
+    assert Decimal(item['resumo']['saldo_esperado']) == 50
+    assert Decimal(item['diferenca_caixa']) == -10
+
+
+def test_operador_nunca_ve_esperado_na_tela(api_client):
+    caixa = SessaoCaixaFactory(status='FECHADA', fundo_inicial=50, valor_contado=40, diferenca_caixa=-10)
+    api_client.force_authenticate(caixa.operador)
+    item = api_client.get('/api/sessoes-caixa/gestao/').data['results'][0]
+    assert item['resumo']['saldo_esperado'] is None
+    assert item['diferenca_caixa'] is None
+
+
+def test_relatorio_de_impressao(api_client):
+    caixa = SessaoCaixaFactory(fundo_inicial=100)
+    venda = VendaFactory(sessao=caixa, status='FINALIZADA', total=30)
+    VendaPagamento.objects.create(venda=venda, forma='DINHEIRO', valor=30)
+    api_client.force_authenticate(caixa.operador)
+    assert api_client.get(f'/api/sessoes-caixa/{caixa.pk}/relatorio/').status_code == 400
+    assert api_client.post(f'/api/sessoes-caixa/{caixa.pk}/fechar/', {}).status_code == 400
+    fechado = api_client.post(f'/api/sessoes-caixa/{caixa.pk}/fechar/', {'valor_contado': '125'})
+    assert fechado.status_code == 200
+    relatorio = fechado.data['relatorio']
+    assert Decimal(relatorio['resumo']['saldo_esperado']) == 130
+    assert Decimal(relatorio['diferenca_caixa']) == -5
+    assert api_client.get(f'/api/sessoes-caixa/{caixa.pk}/relatorio/').data == relatorio
+
+    outro = SessaoCaixaFactory().operador
+    api_client.force_authenticate(outro)
+    assert api_client.get(f'/api/sessoes-caixa/{caixa.pk}/relatorio/').status_code == 403
