@@ -8,7 +8,16 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
 from .models import SessaoCaixa, Venda, VendaItem, VendaPagamento, OperacaoCaixa
+from apps.usuarios.models import PerfilUsuario
+from apps.usuarios.permissions import papel_usuario
 from .services.fechamentos import dados_sessao, eh_gestao
+
+
+def _somente_do_caixa(queryset, user, campo_operador):
+    """O caixa enxerga apenas as próprias sessões e vendas."""
+    if papel_usuario(user) == PerfilUsuario.Papel.CAIXA:
+        return queryset.filter(**{campo_operador: user})
+    return queryset
 from .serializers import (
     SessaoCaixaSerializer,
     VendaSerializer,
@@ -43,7 +52,7 @@ class SessaoCaixaViewSet(viewsets.ModelViewSet):
     queryset = SessaoCaixa.objects.all().select_related('operador')
     serializer_class = SessaoCaixaSerializer
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = _somente_do_caixa(super().get_queryset(), self.request.user, 'operador')
         data_inicio = self.request.query_params.get('data_inicio')
         data_fim = self.request.query_params.get('data_fim')
 
@@ -235,7 +244,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         return VendaSerializer
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = _somente_do_caixa(super().get_queryset(), self.request.user, 'sessao__operador')
         sessao = self.request.query_params.get('sessao')
         status = self.request.query_params.get('status')
         data_inicio = self.request.query_params.get('data_inicio')

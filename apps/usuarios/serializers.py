@@ -85,3 +85,10 @@ class MeuPerfilSerializer(UsuarioSerializer):
     class Meta(UsuarioSerializer.Meta):
         fields = tuple(field for field in UsuarioSerializer.Meta.fields if field != 'password')
 
+
+    def to_representation(self, instance):
+        from .authentication import eh_somente_pdv
+        data = super().to_representation(instance)
+        # Mesmo critério da API: o frontend leva esse usuário direto ao PDV.
+        data['somente_pdv'] = eh_somente_pdv(instance)
+        return data

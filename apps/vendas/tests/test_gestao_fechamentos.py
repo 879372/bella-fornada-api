@@ -96,4 +96,5 @@ def test_relatorio_de_impressao(api_client):
 
     outro = SessaoCaixaFactory().operador
     api_client.force_authenticate(outro)
-    assert api_client.get(f'/api/sessoes-caixa/{caixa.pk}/relatorio/').status_code == 403
+    # Outro caixa nem enxerga a sessão.
+    assert api_client.get(f'/api/sessoes-caixa/{caixa.pk}/relatorio/').status_code == 404
