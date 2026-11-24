@@ -351,21 +351,30 @@ def test_fechar_caixa_exige_conferencia_e_calcula_diferenca(auth_client, admin_u
 
 
 @pytest.mark.django_db
-def test_bipar_mesmo_produto_soma_na_mesma_linha(auth_client, admin_user):
+@pytest.mark.parametrize('quantidade', ['1.000', '3.000', '0.250'])
+def test_bipar_mesmo_produto_cria_linhas_separadas(auth_client, admin_user, quantidade):
     sessao = SessaoCaixaFactory(operador=admin_user, status='ABERTA')
     venda = VendaFactory(sessao=sessao, total=Decimal('0.00'), status='EM_ABERTO')
     produto = ProdutoFactory(preco_venda=Decimal('5.00'))
 
-    for _ in range(2):
+    ids = []
+    for _ in range(3):
         response = auth_client.post('/api/venda-itens/', {
             'venda': venda.id,
             'produto': produto.id,
-            'quantidade': '1.000',
+            'quantidade': quantidade,
         }, format='json')
         assert response.status_code == 201
+        ids.append(response.data['id'])
 
-    assert venda.itens.count() == 1
-    item = venda.itens.get()
-    assert item.quantidade == Decimal('2.000')
+    assert len(set(ids)) == 3
+    assert venda.itens.count() == 3
+    assert all(item.quantidade == Decimal(quantidade) for item in venda.itens.all())
     venda.refresh_from_db()
-    assert venda.total == Decimal('10.00')
+    assert venda.total == Decimal(quantidade) * Decimal('15.00')
+
+    response = auth_client.delete(f'/api/venda-itens/{ids[1]}/')
+    assert response.status_code == 204
+    assert set(venda.itens.values_list('id', flat=True)) == {ids[0], ids[2]}
+    venda.refresh_from_db()
+    assert venda.total == Decimal(quantidade) * Decimal('10.00')
