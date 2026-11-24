@@ -17,6 +17,9 @@ class GrupoSerializer(serializers.ModelSerializer):
 
 
 class ConfiguracaoBalancaSerializer(serializers.ModelSerializer):
+    departamento = serializers.IntegerField(min_value=1, max_value=99, required=False)
+    validade_padrao_dias = serializers.IntegerField(min_value=0, max_value=999, required=False)
+
     class Meta:
         model = ConfiguracaoBalanca
         fields = [
@@ -56,6 +59,7 @@ class ProdutoSerializer(serializers.ModelSerializer):
             'grupo', 'subgrupo', 'marca', 'ativo',
             'descricao_delivery', 'disponivel_delivery', 'imagem_url',
             'tempo_preparo_minutos',
+            'enviar_balanca', 'tipo_balanca', 'validade_balanca_dias',
             'ncm', 'cest', 'cfop', 'cst_icms', 'cst_pis', 'cst_cofins',
             'origem_mercadoria', 'codigo_beneficio_fiscal',
             'unidade_tributavel', 'gtin_tributavel',

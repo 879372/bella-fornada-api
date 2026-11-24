@@ -1,4 +1,3 @@
-import csv
 import logging
 
 from django.db.models import Q
@@ -10,6 +9,7 @@ from rest_framework.views import APIView
 
 from apps.usuarios.permissions import CanChangePdvPrice, IsAdminOrManager
 
+from .balanca_mgv import ErroCargaBalanca, gerar_depto, gerar_itensmgv, item_do_produto
 from .barcodes import interpretar_etiqueta_balanca
 from .models import ConfiguracaoBalanca, Produto, Grupo
 from .serializers import (
@@ -40,29 +40,38 @@ class ConfiguracaoBalancaView(APIView):
 
 
 class ExportarCargaBalancaView(APIView):
-    def get(self, request):
-        configuracao = ConfiguracaoBalanca.atual()
-        produtos = Produto.objects.filter(
-            ativo=True, unidade_medida__iexact='KG'
-        ).order_by('codigo_legado')
+    """Gera ITENSMGV.TXT ou DEPTO.TXT no layout do MGV (Toledo).
 
-        response = HttpResponse(content_type='text/csv; charset=utf-8')
-        response['Content-Disposition'] = 'attachment; filename="carga_balanca.csv"'
-        response.write('\ufeff')
-        writer = csv.writer(response, delimiter=';', lineterminator='\r\n')
-        writer.writerow([
-            'PLU', 'DESCRICAO', 'PRECO_KG', 'VALIDADE_DIAS',
-            'DEPARTAMENTO', 'TIPO',
-        ])
-        for produto in produtos:
-            writer.writerow([
-                produto.codigo_legado,
-                produto.nome[:40],
-                f'{produto.preco_venda:.2f}'.replace('.', ','),
-                configuracao.validade_padrao_dias,
-                configuracao.departamento,
-                'PESO',
-            ])
+    `?arquivo=itensmgv` (padrão) ou `?arquivo=depto`.
+    """
+
+    ARQUIVOS = {'itensmgv': 'ITENSMGV.TXT', 'depto': 'DEPTO.TXT'}
+
+    def get(self, request):
+        arquivo = request.query_params.get('arquivo', 'itensmgv').lower()
+        if arquivo not in self.ARQUIVOS:
+            return Response({'detail': 'Arquivo inválido. Use itensmgv ou depto.'}, status=400)
+
+        configuracao = ConfiguracaoBalanca.atual()
+        try:
+            if arquivo == 'depto':
+                conteudo = gerar_depto([(configuracao.departamento, '')])
+            else:
+                produtos = Produto.objects.filter(
+                    ativo=True, enviar_balanca=True
+                ).order_by('codigo_legado')
+                if not produtos.exists():
+                    return Response({
+                        'detail': 'Marque pelo menos um produto ativo para enviar à balança.'
+                    }, status=400)
+                conteudo = gerar_itensmgv(
+                    item_do_produto(produto, configuracao) for produto in produtos
+                )
+        except ErroCargaBalanca as exc:
+            return Response({'detail': str(exc)}, status=400)
+
+        response = HttpResponse(conteudo, content_type='text/plain; charset=windows-1252')
+        response['Content-Disposition'] = f'attachment; filename="{self.ARQUIVOS[arquivo]}"'
         return response
 
 

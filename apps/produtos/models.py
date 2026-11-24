@@ -83,6 +83,23 @@ class Produto(BaseModel):
     imagem_url = models.URLField(blank=True)
     tempo_preparo_minutos = models.PositiveSmallIntegerField(default=15)
 
+    # Carga da balança Toledo (arquivo ITENSMGV.TXT do MGV)
+    enviar_balanca = models.BooleanField(
+        default=False, help_text='Inclui o produto na carga ITENSMGV da balança.'
+    )
+    tipo_balanca = models.CharField(
+        max_length=1,
+        blank=True,
+        choices=[('0', 'Venda por peso'), ('1', 'Venda por unidade'), ('2', 'Tipo 2 (legado)')],
+        help_text='Vazio: peso quando a unidade é KG, unidade nos demais casos.',
+    )
+    validade_balanca_dias = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MaxValueValidator(999)],
+        help_text='Vazio: usa a validade padrão da configuração da balança.',
+    )
+
     # Classificação fiscal. As alíquotas e códigos devem ser homologados pelo
     # contador da empresa antes de ativar emissão em produção.
     ncm = models.CharField(max_length=8, blank=True)
